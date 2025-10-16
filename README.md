@@ -38,8 +38,13 @@ TaskFolio is a modern, web-based task management application that helps students
 
 ## Project Documentation
 
-This repository contains comprehensive planning documents for the TaskFolio application:
+This repository contains comprehensive planning documents for the TaskFolio application.
 
+### 🚀 Start Here
+- **[GETTING_STARTED.md](./GETTING_STARTED.md)** - New to the project? Start here!
+- **[PLANNING_SUMMARY.md](./PLANNING_SUMMARY.md)** - Executive summary of all planning documents
+
+### 📚 Complete Documentation
 - **[IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)** - Complete multi-phase implementation plan with tasks and sub-tasks
 - **[DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md)** - Detailed database design and schema documentation
 - **[API_SPECIFICATION.md](./API_SPECIFICATION.md)** - RESTful API endpoint specifications
@@ -47,6 +52,8 @@ This repository contains comprehensive planning documents for the TaskFolio appl
 - **[TECHNICAL_REQUIREMENTS.md](./TECHNICAL_REQUIREMENTS.md)** - Functional and non-functional requirements
 - **[ROADMAP.md](./ROADMAP.md)** - Development timeline and milestones
 - **[SPRINT_PLANNING.md](./SPRINT_PLANNING.md)** - Sprint planning template and examples
+
+**Total**: 9 comprehensive documents with 85,000+ words of specifications, designs, and guidelines.
 
 ## Getting Started
 
