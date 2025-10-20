@@ -569,7 +569,7 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 	if user.Role == "instructor" && assignedTo != "" {
 		// Check if assigning to a cohort
-		if assignedTo[:7] == "cohort:" {
+		if len(assignedTo) > 7 && assignedTo[:7] == "cohort:" {
 			cohortID = assignedTo[7:]
 			ownerID = 0 // Special case: assign to cohort
 		} else if assignedTo == "all" {
@@ -583,29 +583,59 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 	if ownerID == 0 && cohortID != "" {
 		// Assign to all students in a cohort
 		rows, err := db.Query("SELECT id FROM users WHERE role = 'student' AND cohort_name = ?", cohortID)
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var studentID int
-				rows.Scan(&studentID)
-				_, err = db.Exec(`
-					INSERT INTO tasks (title, description, due_date, owner_id, created_by, assigned_to, task_type, resource_url, cohort_id)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-				`, title, description, dueDate, studentID, user.ID, "", taskType, resourceURL, cohortID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to query cohort students: %v", err), http.StatusInternalServerError)
+			return
+		}
+		// Collect all student IDs first
+		var studentIDs []int
+		for rows.Next() {
+			var studentID int
+			if err := rows.Scan(&studentID); err != nil {
+				log.Printf("Failed to scan student ID: %v", err)
+				continue
+			}
+			studentIDs = append(studentIDs, studentID)
+		}
+		rows.Close()
+		
+		// Now create tasks for each student
+		for _, studentID := range studentIDs {
+			_, err := db.Exec(`
+				INSERT INTO tasks (title, description, due_date, owner_id, created_by, assigned_to, task_type, resource_url, cohort_id)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`, title, description, dueDate, studentID, user.ID, "", taskType, resourceURL, cohortID)
+			if err != nil {
+				log.Printf("Failed to create task for student %d: %v", studentID, err)
 			}
 		}
 	} else if ownerID == 0 {
 		// Assign to all students
 		rows, err := db.Query("SELECT id FROM users WHERE role = 'student'")
-		if err == nil {
-			defer rows.Close()
-			for rows.Next() {
-				var studentID int
-				rows.Scan(&studentID)
-				_, err = db.Exec(`
-					INSERT INTO tasks (title, description, due_date, owner_id, created_by, assigned_to, task_type, resource_url, cohort_id)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-				`, title, description, dueDate, studentID, user.ID, "", taskType, resourceURL, "")
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to query students: %v", err), http.StatusInternalServerError)
+			return
+		}
+		// Collect all student IDs first
+		var studentIDs []int
+		for rows.Next() {
+			var studentID int
+			if err := rows.Scan(&studentID); err != nil {
+				log.Printf("Failed to scan student ID: %v", err)
+				continue
+			}
+			studentIDs = append(studentIDs, studentID)
+		}
+		rows.Close()
+		
+		// Now create tasks for each student
+		for _, studentID := range studentIDs {
+			_, err := db.Exec(`
+				INSERT INTO tasks (title, description, due_date, owner_id, created_by, assigned_to, task_type, resource_url, cohort_id)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`, title, description, dueDate, studentID, user.ID, "", taskType, resourceURL, "")
+			if err != nil {
+				log.Printf("Failed to create task for student %d: %v", studentID, err)
 			}
 		}
 	} else {
