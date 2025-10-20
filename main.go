@@ -605,7 +605,7 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 			studentIDs = append(studentIDs, studentID)
 		}
 		rows.Close()
-		
+
 		// Now create tasks for each student
 		for _, studentID := range studentIDs {
 			_, err := db.Exec(`
@@ -634,7 +634,7 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 			studentIDs = append(studentIDs, studentID)
 		}
 		rows.Close()
-		
+
 		// Now create tasks for each student
 		for _, studentID := range studentIDs {
 			_, err := db.Exec(`

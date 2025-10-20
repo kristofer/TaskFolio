@@ -965,7 +965,7 @@ func TestAssignToSpecificStudentDoesNotAllowInstructor(t *testing.T) {
 
 	// Test that we cannot assign to an instructor
 	targetInstructorID := 2
-	
+
 	// Validate the target is an instructor (not a student)
 	err = testDB.QueryRow("SELECT role FROM users WHERE id = ?", targetInstructorID).Scan(&role)
 	if err != nil || role != "student" {
