@@ -38,6 +38,13 @@ type Task struct {
 	TaskType    string // "reading", "coding", "submission", "document-creation"
 	ResourceURL string // URL pointing to resources for the task
 	CohortID    string // Cohort name for cohort-based assignments
+	
+	// Additional fields for instructor view
+	AssignedToSelf      bool
+	TotalStudents       int
+	CompletedStudents   int
+	InProgressStudents  int
+	PendingStudents     int
 }
 
 func initDB() error {
@@ -478,6 +485,162 @@ func studentProgressHandler(w http.ResponseWriter, r *http.Request) {
 	templates.ExecuteTemplate(w, "student_progress.html", data)
 }
 
+// taskDetailHandler shows detailed statistics for a task assigned to students
+func taskDetailHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can view task details
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	taskID := r.URL.Query().Get("id")
+	if taskID == "" {
+		http.Error(w, "Task ID required", http.StatusBadRequest)
+		return
+	}
+
+	// Get the base task info
+	var task Task
+	err = db.QueryRow(`
+		SELECT id, title, description, due_date, status, owner_id, created_by, created_at,
+		       COALESCE(task_type, ''), COALESCE(resource_url, ''), COALESCE(cohort_id, '')
+		FROM tasks WHERE id = ?
+	`, taskID).Scan(&task.ID, &task.Title, &task.Description, &task.DueDate,
+		&task.Status, &task.OwnerID, &task.CreatedBy, &task.CreatedAt,
+		&task.TaskType, &task.ResourceURL, &task.CohortID)
+
+	if err != nil {
+		http.Error(w, "Task not found", http.StatusNotFound)
+		return
+	}
+
+	// Check if instructor created this task
+	if task.CreatedBy != user.ID {
+		http.Error(w, "Unauthorized - you did not create this task", http.StatusForbidden)
+		return
+	}
+
+	// Determine if this task is assigned to self
+	assignedToSelf := task.OwnerID == user.ID
+
+	// If it's a task assigned to students, get all related tasks with same title and created_by
+	// (since cohort/all assignments create multiple task records)
+	type StudentTaskInfo struct {
+		StudentID   int
+		Username    string
+		CohortName  string
+		Status      string
+		TaskID      int
+	}
+
+	var studentTasks []StudentTaskInfo
+	var totalCount, pendingCount, inProgressCount, completedCount int
+
+	if !assignedToSelf {
+		// Find all tasks with same title, created_by, and cohort_id (if applicable)
+		query := `
+			SELECT t.id, t.owner_id, t.status, u.username, COALESCE(u.cohort_name, '')
+			FROM tasks t
+			JOIN users u ON t.owner_id = u.id
+			WHERE t.title = ? AND t.created_by = ? AND t.owner_id != t.created_by
+		`
+		args := []interface{}{task.Title, task.CreatedBy}
+
+		if task.CohortID != "" {
+			query += " AND t.cohort_id = ?"
+			args = append(args, task.CohortID)
+		}
+
+		query += " ORDER BY u.username"
+
+		rows, err := db.Query(query, args...)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to query student tasks: %v", err), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var st StudentTaskInfo
+			err := rows.Scan(&st.TaskID, &st.StudentID, &st.Status, &st.Username, &st.CohortName)
+			if err != nil {
+				log.Printf("Error scanning student task: %v", err)
+				continue
+			}
+			studentTasks = append(studentTasks, st)
+			totalCount++
+
+			switch st.Status {
+			case "pending":
+				pendingCount++
+			case "in_progress":
+				inProgressCount++
+			case "completed":
+				completedCount++
+			}
+		}
+	}
+
+	// Calculate completion percentage
+	completionPercentage := 0.0
+	if totalCount > 0 {
+		completionPercentage = float64(completedCount) / float64(totalCount) * 100
+	}
+
+	// Group students by status for display
+	var pendingStudents, inProgressStudents, completedStudents []StudentTaskInfo
+	for _, st := range studentTasks {
+		switch st.Status {
+		case "pending":
+			pendingStudents = append(pendingStudents, st)
+		case "in_progress":
+			inProgressStudents = append(inProgressStudents, st)
+		case "completed":
+			completedStudents = append(completedStudents, st)
+		}
+	}
+
+	data := struct {
+		User                  User
+		Task                  Task
+		AssignedToSelf        bool
+		TotalCount            int
+		PendingCount          int
+		InProgressCount       int
+		CompletedCount        int
+		CompletionPercentage  float64
+		PendingStudents       []StudentTaskInfo
+		InProgressStudents    []StudentTaskInfo
+		CompletedStudents     []StudentTaskInfo
+	}{
+		User:                  user,
+		Task:                  task,
+		AssignedToSelf:        assignedToSelf,
+		TotalCount:            totalCount,
+		PendingCount:          pendingCount,
+		InProgressCount:       inProgressCount,
+		CompletedCount:        completedCount,
+		CompletionPercentage:  completionPercentage,
+		PendingStudents:       pendingStudents,
+		InProgressStudents:    inProgressStudents,
+		CompletedStudents:     completedStudents,
+	}
+
+	templates.ExecuteTemplate(w, "task_detail.html", data)
+}
+
 func main() {
 	if err := initDB(); err != nil {
 		log.Fatal("Failed to initialize database:", err)
@@ -499,6 +662,7 @@ func main() {
 	http.HandleFunc("/students/add", addStudentHandler)
 	http.HandleFunc("/students/edit", editStudentHandler)
 	http.HandleFunc("/students/progress", studentProgressHandler)
+	http.HandleFunc("/tasks/detail", taskDetailHandler)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -923,6 +1087,9 @@ func getTasks(user User) ([]Task, error) {
 	}
 	defer rows.Close()
 
+	// Track which tasks we've already processed (for grouping cohort/all assignments)
+	processedTasks := make(map[string]bool)
+
 	for rows.Next() {
 		var task Task
 		err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate,
@@ -931,7 +1098,80 @@ func getTasks(user User) ([]Task, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		// For instructors, populate additional statistics
+		if user.Role == "instructor" {
+			// Check if task is assigned to self
+			task.AssignedToSelf = task.OwnerID == user.ID
+
+			// Create a unique key for this task assignment
+			taskKey := fmt.Sprintf("%s_%s_%s", task.Title, task.CohortID, task.CreatedAt.Format("2006-01-02 15:04:05"))
+
+			// If not assigned to self and we haven't processed this task group yet
+			if !task.AssignedToSelf && !processedTasks[taskKey] {
+				// Query all related tasks (same title, created_by, and cohort_id)
+				query := `
+					SELECT status
+					FROM tasks
+					WHERE title = ? AND created_by = ? AND owner_id != created_by
+				`
+				args := []interface{}{task.Title, task.CreatedBy}
+
+				if task.CohortID != "" {
+					query += " AND cohort_id = ?"
+					args = append(args, task.CohortID)
+				}
+
+				statusRows, err := db.Query(query, args...)
+				if err == nil {
+					defer statusRows.Close()
+					for statusRows.Next() {
+						var status string
+						if statusRows.Scan(&status) == nil {
+							task.TotalStudents++
+							switch status {
+							case "completed":
+								task.CompletedStudents++
+							case "in_progress":
+								task.InProgressStudents++
+							case "pending":
+								task.PendingStudents++
+							}
+						}
+					}
+				}
+
+				processedTasks[taskKey] = true
+			}
+		}
+
 		tasks = append(tasks, task)
+	}
+
+	// For instructors, deduplicate tasks that are assigned to multiple students
+	// Keep only one representative task for each group assignment
+	if user.Role == "instructor" {
+		uniqueTasks := make(map[string]Task)
+		for _, task := range tasks {
+			if task.AssignedToSelf {
+				// Keep all self-assigned tasks
+				key := fmt.Sprintf("self_%d", task.ID)
+				uniqueTasks[key] = task
+			} else {
+				// For student assignments, use title+cohort as key to group them
+				key := fmt.Sprintf("%s_%s", task.Title, task.CohortID)
+				// Keep the first occurrence (or update if we have better stats)
+				if existing, exists := uniqueTasks[key]; !exists || existing.TotalStudents == 0 {
+					uniqueTasks[key] = task
+				}
+			}
+		}
+
+		// Convert back to slice
+		tasks = make([]Task, 0, len(uniqueTasks))
+		for _, task := range uniqueTasks {
+			tasks = append(tasks, task)
+		}
 	}
 
 	return tasks, nil

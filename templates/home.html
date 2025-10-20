@@ -196,7 +196,30 @@
                     <div>🔗 <a href="{{.ResourceURL}}" target="_blank" style="color: #667eea; text-decoration: none;">Resource Link</a></div>
                 </div>
                 {{end}}
+                {{if eq $.User.Role "instructor"}}
+                <div class="task-assignment-info">
+                    {{if .AssignedToSelf}}
+                    <div class="assignment-badge self-assigned">📌 Assigned to: Self</div>
+                    {{else if gt .TotalStudents 0}}
+                    <div class="assignment-info">
+                        <div class="assignment-header">👥 Assigned to {{.TotalStudents}} student(s)</div>
+                        <div class="completion-stats">
+                            <div class="stat completed">✓ {{.CompletedStudents}} completed</div>
+                            <div class="stat in-progress">⟳ {{.InProgressStudents}} in progress</div>
+                            <div class="stat pending">○ {{.PendingStudents}} pending</div>
+                        </div>
+                    </div>
+                    {{end}}
+                </div>
+                {{end}}
                 <div class="task-actions">
+                    {{if eq $.User.Role "instructor"}}
+                    {{if not .AssignedToSelf}}
+                    {{if gt .TotalStudents 0}}
+                    <a href="/tasks/detail?id={{.ID}}" class="btn btn-primary btn-small">View Details</a>
+                    {{end}}
+                    {{end}}
+                    {{end}}
                     <a href="/tasks/edit?id={{.ID}}" class="btn btn-primary btn-small">Edit</a>
                     <a href="/tasks/delete?id={{.ID}}" class="btn btn-danger btn-small" 
                        onclick="return confirm('Are you sure you want to delete this task?')">Delete</a>
