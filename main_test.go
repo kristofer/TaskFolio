@@ -1002,3 +1002,239 @@ func TestAssignToSpecificStudentDoesNotAllowInstructor(t *testing.T) {
 		t.Errorf("Expected 0 tasks assigned to instructors, got %d", tasksAssignedToInstructor)
 	}
 }
+
+func TestAddNewStudent(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL,
+			role TEXT NOT NULL,
+			cohort_name TEXT,
+			is_suspended BOOLEAN DEFAULT 0
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Add a new student
+	username := "newstudent"
+	password := "password123"
+	cohortName := "Java11.2"
+
+	_, err = testDB.Exec(`
+		INSERT INTO users (username, password, role, cohort_name, is_suspended)
+		VALUES (?, ?, 'student', ?, 0)
+	`, username, password, cohortName)
+	if err != nil {
+		t.Fatalf("Failed to add new student: %v", err)
+	}
+
+	// Verify student was added
+	var retrievedUsername, retrievedPassword, retrievedRole, retrievedCohort string
+	var isSuspended bool
+	err = testDB.QueryRow(`
+		SELECT username, password, role, cohort_name, is_suspended 
+		FROM users WHERE username = ?
+	`, username).Scan(&retrievedUsername, &retrievedPassword, &retrievedRole, &retrievedCohort, &isSuspended)
+	if err != nil {
+		t.Fatalf("Failed to query new student: %v", err)
+	}
+
+	if retrievedUsername != username {
+		t.Errorf("Expected username '%s', got '%s'", username, retrievedUsername)
+	}
+	if retrievedPassword != password {
+		t.Errorf("Expected password '%s', got '%s'", password, retrievedPassword)
+	}
+	if retrievedRole != "student" {
+		t.Errorf("Expected role 'student', got '%s'", retrievedRole)
+	}
+	if retrievedCohort != cohortName {
+		t.Errorf("Expected cohort '%s', got '%s'", cohortName, retrievedCohort)
+	}
+	if isSuspended {
+		t.Errorf("Expected new student to not be suspended")
+	}
+}
+
+func TestEditStudentUsername(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL,
+			role TEXT NOT NULL,
+			cohort_name TEXT,
+			is_suspended BOOLEAN DEFAULT 0
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Insert a student
+	_, err = testDB.Exec(`
+		INSERT INTO users (username, password, role, cohort_name)
+		VALUES (?, ?, 'student', ?)
+	`, "oldusername", "password123", "Java11.2")
+	if err != nil {
+		t.Fatalf("Failed to insert student: %v", err)
+	}
+
+	// Update the student's username
+	newUsername := "newusername"
+	_, err = testDB.Exec(`
+		UPDATE users SET username = ? WHERE username = ? AND role = 'student'
+	`, newUsername, "oldusername")
+	if err != nil {
+		t.Fatalf("Failed to update username: %v", err)
+	}
+
+	// Verify username was updated
+	var username string
+	err = testDB.QueryRow("SELECT username FROM users WHERE id = 1").Scan(&username)
+	if err != nil {
+		t.Fatalf("Failed to query username: %v", err)
+	}
+
+	if username != newUsername {
+		t.Errorf("Expected username '%s', got '%s'", newUsername, username)
+	}
+}
+
+func TestEditStudentPassword(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL,
+			role TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Insert a student
+	oldPassword := "oldpassword"
+	_, err = testDB.Exec(`
+		INSERT INTO users (username, password, role)
+		VALUES (?, ?, 'student')
+	`, "student1", oldPassword)
+	if err != nil {
+		t.Fatalf("Failed to insert student: %v", err)
+	}
+
+	// Update the student's password
+	newPassword := "newpassword123"
+	_, err = testDB.Exec(`
+		UPDATE users SET password = ? WHERE username = ? AND role = 'student'
+	`, newPassword, "student1")
+	if err != nil {
+		t.Fatalf("Failed to update password: %v", err)
+	}
+
+	// Verify password was updated
+	var password string
+	err = testDB.QueryRow("SELECT password FROM users WHERE username = 'student1'").Scan(&password)
+	if err != nil {
+		t.Fatalf("Failed to query password: %v", err)
+	}
+
+	if password != newPassword {
+		t.Errorf("Expected password '%s', got '%s'", newPassword, password)
+	}
+}
+
+func TestEditStudentAllFields(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL,
+			role TEXT NOT NULL,
+			cohort_name TEXT,
+			is_suspended BOOLEAN DEFAULT 0
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Insert a student
+	_, err = testDB.Exec(`
+		INSERT INTO users (username, password, role, cohort_name, is_suspended)
+		VALUES (?, ?, 'student', ?, 0)
+	`, "oldusername", "oldpassword", "Java11.2")
+	if err != nil {
+		t.Fatalf("Failed to insert student: %v", err)
+	}
+
+	// Update all fields
+	newUsername := "newusername"
+	newPassword := "newpassword"
+	newCohort := "Data6.2"
+	newSuspended := true
+
+	_, err = testDB.Exec(`
+		UPDATE users 
+		SET username = ?, password = ?, cohort_name = ?, is_suspended = ?
+		WHERE id = ? AND role = 'student'
+	`, newUsername, newPassword, newCohort, newSuspended, 1)
+	if err != nil {
+		t.Fatalf("Failed to update student: %v", err)
+	}
+
+	// Verify all fields were updated
+	var username, password, cohort string
+	var suspended bool
+	err = testDB.QueryRow(`
+		SELECT username, password, cohort_name, is_suspended FROM users WHERE id = 1
+	`).Scan(&username, &password, &cohort, &suspended)
+	if err != nil {
+		t.Fatalf("Failed to query student: %v", err)
+	}
+
+	if username != newUsername {
+		t.Errorf("Expected username '%s', got '%s'", newUsername, username)
+	}
+	if password != newPassword {
+		t.Errorf("Expected password '%s', got '%s'", newPassword, password)
+	}
+	if cohort != newCohort {
+		t.Errorf("Expected cohort '%s', got '%s'", newCohort, cohort)
+	}
+	if suspended != newSuspended {
+		t.Errorf("Expected suspended %v, got %v", newSuspended, suspended)
+	}
+}

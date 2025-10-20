@@ -75,6 +75,7 @@
             font-weight: 500;
         }
         input[type="text"],
+        input[type="password"],
         input[type="checkbox"] {
             padding: 12px;
             border: 1px solid #ddd;
@@ -83,7 +84,8 @@
             font-family: inherit;
             transition: border-color 0.3s;
         }
-        input[type="text"] {
+        input[type="text"],
+        input[type="password"] {
             width: 100%;
         }
         input[type="checkbox"] {
@@ -131,13 +133,23 @@
             <h2>Edit Student: {{.Student.Username}}</h2>
             
             <div class="info-box">
-                Update the student's cohort assignment and account status.
+                Update the student's name, cohort assignment, password, and account status.
             </div>
             
             <form method="POST" action="/students/edit?id={{.Student.ID}}">
                 <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" value="{{.Student.Username}}" placeholder="e.g., student1" required>
+                </div>
+                
+                <div class="form-group">
                     <label for="cohort_name">Cohort Name</label>
                     <input type="text" id="cohort_name" name="cohort_name" value="{{.Student.CohortName}}" placeholder="e.g., Java11.2, Data6.2">
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Password (leave blank to keep current)</label>
+                    <input type="password" id="password" name="password" placeholder="Enter new password">
                 </div>
                 
                 <div class="form-group">
