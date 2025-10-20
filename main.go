@@ -277,15 +277,97 @@ func editStudentHandler(w http.ResponseWriter, r *http.Request) {
 
 	cohortName := r.FormValue("cohort_name")
 	isSuspended := r.FormValue("is_suspended") == "on"
+	username := r.FormValue("username")
+	password := r.FormValue("password")
 
-	_, err = db.Exec(`
-		UPDATE users 
-		SET cohort_name = ?, is_suspended = ?
-		WHERE id = ? AND role = 'student'
-	`, cohortName, isSuspended, studentID)
+	// Update student information
+	// If password is provided, update it; otherwise, only update other fields
+	if password != "" {
+		_, err = db.Exec(`
+			UPDATE users 
+			SET username = ?, cohort_name = ?, is_suspended = ?, password = ?
+			WHERE id = ? AND role = 'student'
+		`, username, cohortName, isSuspended, password, studentID)
+	} else {
+		_, err = db.Exec(`
+			UPDATE users 
+			SET username = ?, cohort_name = ?, is_suspended = ?
+			WHERE id = ? AND role = 'student'
+		`, username, cohortName, isSuspended, studentID)
+	}
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/students", http.StatusSeeOther)
+}
+
+// addStudentHandler handles adding new students
+func addStudentHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can add students
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	if r.Method == "GET" {
+		data := struct {
+			User  User
+			Error string
+		}{
+			User: user,
+		}
+		templates.ExecuteTemplate(w, "add_student.html", data)
+		return
+	}
+
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+	cohortName := r.FormValue("cohort_name")
+
+	// Validate required fields
+	if username == "" || password == "" {
+		data := struct {
+			User  User
+			Error string
+		}{
+			User:  user,
+			Error: "Username and password are required",
+		}
+		templates.ExecuteTemplate(w, "add_student.html", data)
+		return
+	}
+
+	// Insert new student
+	_, err = db.Exec(`
+		INSERT INTO users (username, password, role, cohort_name, is_suspended)
+		VALUES (?, ?, 'student', ?, 0)
+	`, username, password, cohortName)
+
+	if err != nil {
+		// Check if it's a unique constraint violation
+		data := struct {
+			User  User
+			Error string
+		}{
+			User:  user,
+			Error: "Username already exists. Please choose a different username.",
+		}
+		templates.ExecuteTemplate(w, "add_student.html", data)
 		return
 	}
 
@@ -414,6 +496,7 @@ func main() {
 	http.HandleFunc("/tasks/edit", editTaskHandler)
 	http.HandleFunc("/tasks/delete", deleteTaskHandler)
 	http.HandleFunc("/students", studentsHandler)
+	http.HandleFunc("/students/add", addStudentHandler)
 	http.HandleFunc("/students/edit", editStudentHandler)
 	http.HandleFunc("/students/progress", studentProgressHandler)
 

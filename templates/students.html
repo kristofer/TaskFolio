@@ -128,7 +128,10 @@
     </div>
 
     <div class="container">
-        <h2>Students</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2>Students</h2>
+            <a href="/students/add" class="btn btn-primary">+ Add New Student</a>
+        </div>
         
         {{if .Students}}
         <div class="students-table">
