@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  tasking:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tasking
+    ports:
+      - "8080:8080"
+    volumes:
+      # Persistent database storage
+      - tasking-data:/data
+    environment:
+      - PORT=8080
+    restart: unless-stopped
+
+volumes:
+  # Named volume for persistent database storage
+  tasking-data:
+    driver: local
