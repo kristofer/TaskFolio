@@ -165,6 +165,9 @@
     <div class="container">
         <div class="actions">
             <a href="/tasks/add" class="btn btn-primary">+ Add New Task</a>
+            {{if eq .User.Role "instructor"}}
+            <a href="/students" class="btn btn-primary">Manage Students</a>
+            {{end}}
         </div>
 
         {{if .Tasks}}
@@ -181,7 +184,18 @@
                     <div>📅 Due: {{.DueDate}}</div>
                     {{end}}
                     <div>🕐 Created: {{.CreatedAt.Format "Jan 2, 2006"}}</div>
+                    {{if .TaskType}}
+                    <div>🏷️ Type: {{.TaskType}}</div>
+                    {{end}}
+                    {{if .CohortID}}
+                    <div>👥 Cohort: {{.CohortID}}</div>
+                    {{end}}
                 </div>
+                {{if .ResourceURL}}
+                <div class="task-meta">
+                    <div>🔗 <a href="{{.ResourceURL}}" target="_blank" style="color: #667eea; text-decoration: none;">Resource Link</a></div>
+                </div>
+                {{end}}
                 <div class="task-actions">
                     <a href="/tasks/edit?id={{.ID}}" class="btn btn-primary btn-small">Edit</a>
                     <a href="/tasks/delete?id={{.ID}}" class="btn btn-danger btn-small" 
