@@ -575,8 +575,15 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 		} else if assignedTo == "all" {
 			ownerID = 0 // Special case: assign to all students
 		} else {
-			// Parse student ID
+			// Parse student ID and validate it's actually a student
 			ownerID, _ = strconv.Atoi(assignedTo)
+			// Validate that the target user is a student, not an instructor
+			var targetRole string
+			err = db.QueryRow("SELECT role FROM users WHERE id = ?", ownerID).Scan(&targetRole)
+			if err != nil || targetRole != "student" {
+				http.Error(w, "Invalid assignment: can only assign tasks to students", http.StatusBadRequest)
+				return
+			}
 		}
 	}
 
@@ -598,7 +605,7 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 			studentIDs = append(studentIDs, studentID)
 		}
 		rows.Close()
-		
+
 		// Now create tasks for each student
 		for _, studentID := range studentIDs {
 			_, err := db.Exec(`
@@ -627,7 +634,7 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 			studentIDs = append(studentIDs, studentID)
 		}
 		rows.Close()
-		
+
 		// Now create tasks for each student
 		for _, studentID := range studentIDs {
 			_, err := db.Exec(`

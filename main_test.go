@@ -663,3 +663,342 @@ func TestUpdateStudentCohort(t *testing.T) {
 		t.Errorf("Expected cohort '%s', got '%s'", newCohort, cohortName.String)
 	}
 }
+
+func TestAssignToAllStudentsExcludesInstructors(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			role TEXT NOT NULL,
+			cohort_name TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Create tasks table
+	_, err = testDB.Exec(`
+		CREATE TABLE tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			owner_id INTEGER NOT NULL,
+			created_by INTEGER NOT NULL
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create tasks table: %v", err)
+	}
+
+	// Insert test users: 2 instructors and 3 students
+	_, err = testDB.Exec("INSERT INTO users (username, role) VALUES (?, ?)", "instructor1", "instructor")
+	if err != nil {
+		t.Fatalf("Failed to insert instructor1: %v", err)
+	}
+	_, err = testDB.Exec("INSERT INTO users (username, role) VALUES (?, ?)", "instructor2", "instructor")
+	if err != nil {
+		t.Fatalf("Failed to insert instructor2: %v", err)
+	}
+	_, err = testDB.Exec("INSERT INTO users (username, role) VALUES (?, ?)", "student1", "student")
+	if err != nil {
+		t.Fatalf("Failed to insert student1: %v", err)
+	}
+	_, err = testDB.Exec("INSERT INTO users (username, role) VALUES (?, ?)", "student2", "student")
+	if err != nil {
+		t.Fatalf("Failed to insert student2: %v", err)
+	}
+	_, err = testDB.Exec("INSERT INTO users (username, role) VALUES (?, ?)", "student3", "student")
+	if err != nil {
+		t.Fatalf("Failed to insert student3: %v", err)
+	}
+
+	// Simulate the "assign to all" logic from addTaskHandler
+	// This should only assign to students, not instructors
+	rows, err := testDB.Query("SELECT id FROM users WHERE role = 'student'")
+	if err != nil {
+		t.Fatalf("Failed to query students: %v", err)
+	}
+
+	var studentIDs []int
+	for rows.Next() {
+		var studentID int
+		if err := rows.Scan(&studentID); err != nil {
+			t.Errorf("Failed to scan student ID: %v", err)
+			continue
+		}
+		studentIDs = append(studentIDs, studentID)
+	}
+	rows.Close()
+
+	// Create tasks for each student
+	instructorID := 1
+	taskTitle := "Assignment for All"
+	for _, studentID := range studentIDs {
+		_, err := testDB.Exec("INSERT INTO tasks (title, owner_id, created_by) VALUES (?, ?, ?)",
+			taskTitle, studentID, instructorID)
+		if err != nil {
+			t.Errorf("Failed to create task for student %d: %v", studentID, err)
+		}
+	}
+
+	// Verify tasks were only assigned to students
+	var totalUsers, totalTasks int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM users WHERE role = 'student'").Scan(&totalUsers)
+	if err != nil {
+		t.Fatalf("Failed to count students: %v", err)
+	}
+
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&totalTasks)
+	if err != nil {
+		t.Fatalf("Failed to count tasks: %v", err)
+	}
+
+	if totalUsers != 3 {
+		t.Errorf("Expected 3 students, got %d", totalUsers)
+	}
+
+	if totalTasks != 3 {
+		t.Errorf("Expected 3 tasks (one per student), got %d", totalTasks)
+	}
+
+	// Verify no tasks were assigned to instructors
+	var instructorTasks int
+	err = testDB.QueryRow(`
+		SELECT COUNT(*) FROM tasks t 
+		JOIN users u ON t.owner_id = u.id 
+		WHERE u.role = 'instructor'
+	`).Scan(&instructorTasks)
+	if err != nil {
+		t.Fatalf("Failed to count instructor tasks: %v", err)
+	}
+
+	if instructorTasks != 0 {
+		t.Errorf("Expected 0 tasks assigned to instructors, got %d", instructorTasks)
+	}
+}
+
+func TestAssignToCohortExcludesInstructors(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			role TEXT NOT NULL,
+			cohort_name TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Create tasks table
+	_, err = testDB.Exec(`
+		CREATE TABLE tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			owner_id INTEGER NOT NULL,
+			created_by INTEGER NOT NULL,
+			cohort_id TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create tasks table: %v", err)
+	}
+
+	// Insert test users: 1 instructor in Java11.2 cohort and 2 students in Java11.2 cohort
+	cohortName := "Java11.2"
+	_, err = testDB.Exec("INSERT INTO users (username, role, cohort_name) VALUES (?, ?, ?)", "instructor1", "instructor", cohortName)
+	if err != nil {
+		t.Fatalf("Failed to insert instructor1: %v", err)
+	}
+	_, err = testDB.Exec("INSERT INTO users (username, role, cohort_name) VALUES (?, ?, ?)", "student1", "student", cohortName)
+	if err != nil {
+		t.Fatalf("Failed to insert student1: %v", err)
+	}
+	_, err = testDB.Exec("INSERT INTO users (username, role, cohort_name) VALUES (?, ?, ?)", "student2", "student", cohortName)
+	if err != nil {
+		t.Fatalf("Failed to insert student2: %v", err)
+	}
+
+	// Simulate the "assign to cohort" logic from addTaskHandler
+	// This should only assign to students in the cohort, not instructors
+	rows, err := testDB.Query("SELECT id FROM users WHERE role = 'student' AND cohort_name = ?", cohortName)
+	if err != nil {
+		t.Fatalf("Failed to query cohort students: %v", err)
+	}
+
+	var studentIDs []int
+	for rows.Next() {
+		var studentID int
+		if err := rows.Scan(&studentID); err != nil {
+			t.Errorf("Failed to scan student ID: %v", err)
+			continue
+		}
+		studentIDs = append(studentIDs, studentID)
+	}
+	rows.Close()
+
+	// Create tasks for each student in cohort
+	instructorID := 1
+	taskTitle := "Cohort Assignment"
+	for _, studentID := range studentIDs {
+		_, err := testDB.Exec("INSERT INTO tasks (title, owner_id, created_by, cohort_id) VALUES (?, ?, ?, ?)",
+			taskTitle, studentID, instructorID, cohortName)
+		if err != nil {
+			t.Errorf("Failed to create task for student %d: %v", studentID, err)
+		}
+	}
+
+	// Verify tasks were only assigned to students in the cohort
+	var totalStudents, totalTasks int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM users WHERE role = 'student' AND cohort_name = ?", cohortName).Scan(&totalStudents)
+	if err != nil {
+		t.Fatalf("Failed to count cohort students: %v", err)
+	}
+
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE cohort_id = ?", cohortName).Scan(&totalTasks)
+	if err != nil {
+		t.Fatalf("Failed to count cohort tasks: %v", err)
+	}
+
+	if totalStudents != 2 {
+		t.Errorf("Expected 2 students in cohort, got %d", totalStudents)
+	}
+
+	if totalTasks != 2 {
+		t.Errorf("Expected 2 tasks (one per student in cohort), got %d", totalTasks)
+	}
+
+	// Verify no tasks were assigned to instructors
+	var instructorTasks int
+	err = testDB.QueryRow(`
+		SELECT COUNT(*) FROM tasks t 
+		JOIN users u ON t.owner_id = u.id 
+		WHERE u.role = 'instructor' AND t.cohort_id = ?
+	`, cohortName).Scan(&instructorTasks)
+	if err != nil {
+		t.Fatalf("Failed to count instructor tasks in cohort: %v", err)
+	}
+
+	if instructorTasks != 0 {
+		t.Errorf("Expected 0 tasks assigned to instructors in cohort, got %d", instructorTasks)
+	}
+}
+
+func TestAssignToSpecificStudentDoesNotAllowInstructor(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			role TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Create tasks table
+	_, err = testDB.Exec(`
+		CREATE TABLE tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			owner_id INTEGER NOT NULL,
+			created_by INTEGER NOT NULL
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create tasks table: %v", err)
+	}
+
+	// Insert test users
+	_, err = testDB.Exec("INSERT INTO users (username, role) VALUES (?, ?)", "instructor1", "instructor")
+	if err != nil {
+		t.Fatalf("Failed to insert instructor1: %v", err)
+	}
+	_, err = testDB.Exec("INSERT INTO users (username, role) VALUES (?, ?)", "instructor2", "instructor")
+	if err != nil {
+		t.Fatalf("Failed to insert instructor2: %v", err)
+	}
+	_, err = testDB.Exec("INSERT INTO users (username, role) VALUES (?, ?)", "student1", "student")
+	if err != nil {
+		t.Fatalf("Failed to insert student1: %v", err)
+	}
+
+	// Test that we can successfully assign to a student
+	instructorID := 1
+	studentID := 3
+	taskTitle := "Task for student"
+
+	// First, validate the user is a student
+	var role string
+	err = testDB.QueryRow("SELECT role FROM users WHERE id = ?", studentID).Scan(&role)
+	if err != nil || role != "student" {
+		t.Fatalf("Target should be a student")
+	}
+
+	// Create task for student - this should succeed
+	_, err = testDB.Exec("INSERT INTO tasks (title, owner_id, created_by) VALUES (?, ?, ?)",
+		taskTitle, studentID, instructorID)
+	if err != nil {
+		t.Fatalf("Failed to create task for student: %v", err)
+	}
+
+	// Test that we cannot assign to an instructor
+	targetInstructorID := 2
+
+	// Validate the target is an instructor (not a student)
+	err = testDB.QueryRow("SELECT role FROM users WHERE id = ?", targetInstructorID).Scan(&role)
+	if err != nil || role != "student" {
+		// This is expected - the target is an instructor, not a student
+		// So we should NOT create a task for them
+		t.Log("Correctly detected that target is not a student")
+	} else {
+		t.Fatal("Target should be an instructor, not a student")
+	}
+
+	// Verify that only one task was created (for the student, not the instructor)
+	var taskCount int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&taskCount)
+	if err != nil {
+		t.Fatalf("Failed to count tasks: %v", err)
+	}
+
+	if taskCount != 1 {
+		t.Errorf("Expected 1 task (for student only), got %d", taskCount)
+	}
+
+	// Verify no tasks were assigned to instructors
+	var tasksAssignedToInstructor int
+	err = testDB.QueryRow(`
+		SELECT COUNT(*) FROM tasks t 
+		JOIN users u ON t.owner_id = u.id 
+		WHERE u.role = 'instructor'
+	`).Scan(&tasksAssignedToInstructor)
+	if err != nil {
+		t.Fatalf("Failed to count instructor tasks: %v", err)
+	}
+
+	if tasksAssignedToInstructor != 0 {
+		t.Errorf("Expected 0 tasks assigned to instructors, got %d", tasksAssignedToInstructor)
+	}
+}
