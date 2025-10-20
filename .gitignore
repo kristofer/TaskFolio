@@ -32,6 +32,7 @@ go.work.sum
 
 # Application binary
 taskfolio
+tasking
 
 # Editor/IDE
 # .idea/

@@ -2,7 +2,7 @@
 FROM golang:1.21-alpine AS builder
 
 # Install build dependencies
-RUN apk add --no-cache gcc musl-dev sqlite-dev
+RUN apk update && apk add --no-cache gcc musl-dev sqlite-dev
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -o tasking .
 FROM alpine:latest
 
 # Install runtime dependencies
-RUN apk --no-cache add ca-certificates sqlite-libs
+RUN apk --no-cache add ca-certificates sqlite
 
 WORKDIR /root/
 
