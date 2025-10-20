@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -233,5 +234,432 @@ func TestTaskStatusUpdate(t *testing.T) {
 
 	if status != "completed" {
 		t.Errorf("Expected status 'completed', got '%s'", status)
+	}
+}
+
+func TestCohortAssignment(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table with cohort support
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL,
+			role TEXT NOT NULL,
+			cohort_name TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Insert test users with cohorts
+	tests := []struct {
+		username   string
+		cohortName string
+	}{
+		{"student1", "Java11.2"},
+		{"student2", "Java11.2"},
+		{"student3", "Data6.2"},
+	}
+
+	for _, tt := range tests {
+		_, err := testDB.Exec("INSERT INTO users (username, password, role, cohort_name) VALUES (?, ?, ?, ?)",
+			tt.username, "password123", "student", tt.cohortName)
+		if err != nil {
+			t.Errorf("Failed to insert user %s: %v", tt.username, err)
+		}
+	}
+
+	// Verify cohorts were assigned
+	var count int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM users WHERE cohort_name = 'Java11.2'").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to count users in cohort: %v", err)
+	}
+
+	if count != 2 {
+		t.Errorf("Expected 2 users in Java11.2 cohort, got %d", count)
+	}
+
+	// Verify cohort retrieval
+	var cohortName string
+	err = testDB.QueryRow("SELECT cohort_name FROM users WHERE username = 'student1'").Scan(&cohortName)
+	if err != nil {
+		t.Fatalf("Failed to query cohort: %v", err)
+	}
+
+	if cohortName != "Java11.2" {
+		t.Errorf("Expected cohort 'Java11.2', got '%s'", cohortName)
+	}
+}
+
+func TestAccountSuspension(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table with suspension support
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL,
+			role TEXT NOT NULL,
+			is_suspended BOOLEAN DEFAULT 0
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Insert test user
+	_, err = testDB.Exec("INSERT INTO users (username, password, role, is_suspended) VALUES (?, ?, ?, ?)",
+		"student1", "password123", "student", false)
+	if err != nil {
+		t.Fatalf("Failed to insert user: %v", err)
+	}
+
+	// Suspend account
+	_, err = testDB.Exec("UPDATE users SET is_suspended = ? WHERE username = ?", true, "student1")
+	if err != nil {
+		t.Fatalf("Failed to suspend account: %v", err)
+	}
+
+	// Verify suspension
+	var isSuspended bool
+	err = testDB.QueryRow("SELECT is_suspended FROM users WHERE username = 'student1'").Scan(&isSuspended)
+	if err != nil {
+		t.Fatalf("Failed to query suspension status: %v", err)
+	}
+
+	if !isSuspended {
+		t.Errorf("Expected account to be suspended")
+	}
+
+	// Unsuspend account
+	_, err = testDB.Exec("UPDATE users SET is_suspended = ? WHERE username = ?", false, "student1")
+	if err != nil {
+		t.Fatalf("Failed to unsuspend account: %v", err)
+	}
+
+	// Verify unsuspension
+	err = testDB.QueryRow("SELECT is_suspended FROM users WHERE username = 'student1'").Scan(&isSuspended)
+	if err != nil {
+		t.Fatalf("Failed to query suspension status: %v", err)
+	}
+
+	if isSuspended {
+		t.Errorf("Expected account to be active")
+	}
+}
+
+func TestTaskTypes(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create tasks table with task types
+	_, err = testDB.Exec(`
+		CREATE TABLE tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			task_type TEXT,
+			owner_id INTEGER NOT NULL,
+			created_by INTEGER NOT NULL
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create tasks table: %v", err)
+	}
+
+	// Test different task types
+	taskTypes := []string{"reading", "coding", "submission", "document-creation"}
+
+	for i, taskType := range taskTypes {
+		_, err := testDB.Exec("INSERT INTO tasks (title, task_type, owner_id, created_by) VALUES (?, ?, ?, ?)",
+			fmt.Sprintf("Task %d", i+1), taskType, 1, 1)
+		if err != nil {
+			t.Errorf("Failed to insert task with type %s: %v", taskType, err)
+		}
+	}
+
+	// Verify all task types were created
+	var count int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to count tasks: %v", err)
+	}
+
+	if count != len(taskTypes) {
+		t.Errorf("Expected %d tasks, got %d", len(taskTypes), count)
+	}
+
+	// Verify specific task type
+	var taskType string
+	err = testDB.QueryRow("SELECT task_type FROM tasks WHERE title = 'Task 1'").Scan(&taskType)
+	if err != nil {
+		t.Fatalf("Failed to query task type: %v", err)
+	}
+
+	if taskType != "reading" {
+		t.Errorf("Expected task type 'reading', got '%s'", taskType)
+	}
+}
+
+func TestTaskResourceURL(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create tasks table with resource URL
+	_, err = testDB.Exec(`
+		CREATE TABLE tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			resource_url TEXT,
+			owner_id INTEGER NOT NULL,
+			created_by INTEGER NOT NULL
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create tasks table: %v", err)
+	}
+
+	// Insert task with resource URL
+	testURL := "https://example.com/resource"
+	_, err = testDB.Exec("INSERT INTO tasks (title, resource_url, owner_id, created_by) VALUES (?, ?, ?, ?)",
+		"Test Task", testURL, 1, 1)
+	if err != nil {
+		t.Fatalf("Failed to insert task: %v", err)
+	}
+
+	// Verify resource URL
+	var resourceURL string
+	err = testDB.QueryRow("SELECT resource_url FROM tasks WHERE id = 1").Scan(&resourceURL)
+	if err != nil {
+		t.Fatalf("Failed to query resource URL: %v", err)
+	}
+
+	if resourceURL != testURL {
+		t.Errorf("Expected resource URL '%s', got '%s'", testURL, resourceURL)
+	}
+}
+
+func TestCohortTaskAssignment(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			role TEXT NOT NULL,
+			cohort_name TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Create tasks table
+	_, err = testDB.Exec(`
+		CREATE TABLE tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			owner_id INTEGER NOT NULL,
+			created_by INTEGER NOT NULL,
+			cohort_id TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create tasks table: %v", err)
+	}
+
+	// Verify tasks table exists
+	var tableExists int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='tasks'").Scan(&tableExists)
+	if err != nil || tableExists == 0 {
+		t.Fatalf("Tasks table not found after creation: %v", err)
+	}
+
+	// Insert test users in same cohort
+	cohortName := "Java11.2"
+	for i := 1; i <= 3; i++ {
+		_, err := testDB.Exec("INSERT INTO users (username, role, cohort_name) VALUES (?, ?, ?)",
+			fmt.Sprintf("student%d", i), "student", cohortName)
+		if err != nil {
+			t.Fatalf("Failed to insert user: %v", err)
+		}
+	}
+
+	// Simulate assigning task to cohort (creating task for each student in cohort)
+	rows, err := testDB.Query("SELECT id FROM users WHERE cohort_name = ?", cohortName)
+	if err != nil {
+		t.Fatalf("Failed to query cohort students: %v", err)
+	}
+
+	// Collect student IDs first
+	var studentIDs []int
+	for rows.Next() {
+		var studentID int
+		if err := rows.Scan(&studentID); err != nil {
+			t.Errorf("Failed to scan student ID: %v", err)
+			continue
+		}
+		studentIDs = append(studentIDs, studentID)
+	}
+	rows.Close()
+
+	// Now create tasks for each student
+	taskTitle := "Cohort Assignment"
+	instructorID := 1
+	tasksCreated := 0
+
+	for _, studentID := range studentIDs {
+		_, err := testDB.Exec("INSERT INTO tasks (title, owner_id, created_by, cohort_id) VALUES (?, ?, ?, ?)",
+			taskTitle, studentID, instructorID, cohortName)
+		if err != nil {
+			t.Errorf("Failed to create task for student %d: %v", studentID, err)
+		}
+		tasksCreated++
+	}
+
+	if tasksCreated != 3 {
+		t.Errorf("Expected 3 tasks created, got %d", tasksCreated)
+	}
+
+	// Verify tasks were assigned to cohort
+	var count int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE cohort_id = ?", cohortName).Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to count cohort tasks: %v", err)
+	}
+
+	if count != 3 {
+		t.Errorf("Expected 3 tasks for cohort, got %d", count)
+	}
+}
+
+func TestTaskCompletionStats(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create tasks table
+	_, err = testDB.Exec(`
+		CREATE TABLE tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			status TEXT DEFAULT 'pending',
+			owner_id INTEGER NOT NULL,
+			created_by INTEGER NOT NULL
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create tasks table: %v", err)
+	}
+
+	studentID := 1
+	instructorID := 2
+
+	// Insert tasks with different statuses
+	statuses := []string{"completed", "completed", "in_progress", "pending", "pending"}
+	for i, status := range statuses {
+		_, err := testDB.Exec("INSERT INTO tasks (title, status, owner_id, created_by) VALUES (?, ?, ?, ?)",
+			fmt.Sprintf("Task %d", i+1), status, studentID, instructorID)
+		if err != nil {
+			t.Fatalf("Failed to insert task: %v", err)
+		}
+	}
+
+	// Calculate completion stats
+	var totalTasks, completedTasks int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE owner_id = ?", studentID).Scan(&totalTasks)
+	if err != nil {
+		t.Fatalf("Failed to count total tasks: %v", err)
+	}
+
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE owner_id = ? AND status = 'completed'", studentID).Scan(&completedTasks)
+	if err != nil {
+		t.Fatalf("Failed to count completed tasks: %v", err)
+	}
+
+	if totalTasks != 5 {
+		t.Errorf("Expected 5 total tasks, got %d", totalTasks)
+	}
+
+	if completedTasks != 2 {
+		t.Errorf("Expected 2 completed tasks, got %d", completedTasks)
+	}
+
+	completionPercentage := float64(completedTasks) / float64(totalTasks) * 100
+	expectedPercentage := 40.0
+
+	if completionPercentage != expectedPercentage {
+		t.Errorf("Expected completion percentage %.1f%%, got %.1f%%", expectedPercentage, completionPercentage)
+	}
+}
+
+func TestUpdateStudentCohort(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			role TEXT NOT NULL,
+			cohort_name TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Insert student without cohort
+	_, err = testDB.Exec("INSERT INTO users (username, role) VALUES (?, ?)",
+		"student1", "student")
+	if err != nil {
+		t.Fatalf("Failed to insert user: %v", err)
+	}
+
+	// Update student cohort
+	newCohort := "Java11.2"
+	_, err = testDB.Exec("UPDATE users SET cohort_name = ? WHERE username = ?", newCohort, "student1")
+	if err != nil {
+		t.Fatalf("Failed to update cohort: %v", err)
+	}
+
+	// Verify cohort was updated
+	var cohortName sql.NullString
+	err = testDB.QueryRow("SELECT cohort_name FROM users WHERE username = 'student1'").Scan(&cohortName)
+	if err != nil {
+		t.Fatalf("Failed to query cohort: %v", err)
+	}
+
+	if !cohortName.Valid || cohortName.String != newCohort {
+		t.Errorf("Expected cohort '%s', got '%s'", newCohort, cohortName.String)
 	}
 }

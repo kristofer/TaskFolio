@@ -140,6 +140,22 @@
                     </select>
                 </div>
                 
+                <div class="form-group">
+                    <label for="task_type">Task Type</label>
+                    <select id="task_type" name="task_type">
+                        <option value="">-- Select Type --</option>
+                        <option value="reading" {{if eq .Task.TaskType "reading"}}selected{{end}}>Reading</option>
+                        <option value="coding" {{if eq .Task.TaskType "coding"}}selected{{end}}>Coding</option>
+                        <option value="submission" {{if eq .Task.TaskType "submission"}}selected{{end}}>Submission</option>
+                        <option value="document-creation" {{if eq .Task.TaskType "document-creation"}}selected{{end}}>Document Creation</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="resource_url">Resource URL</label>
+                    <input type="text" id="resource_url" name="resource_url" value="{{.Task.ResourceURL}}" placeholder="https://example.com/resource">
+                </div>
+                
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary">Update Task</button>
                     <a href="/" class="btn">Cancel</a>
