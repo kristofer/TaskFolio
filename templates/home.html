@@ -596,8 +596,12 @@
             // Resource URL
             if (task.resourceURL) {
                 document.getElementById('modalResourceURLField').style.display = 'block';
-                document.getElementById('modalResourceURL').innerHTML = 
-                    `<a href="${task.resourceURL}" target="_blank">${task.resourceURL}</a>`;
+                const urlLink = document.createElement('a');
+                urlLink.href = task.resourceURL;
+                urlLink.target = '_blank';
+                urlLink.textContent = task.resourceURL;
+                document.getElementById('modalResourceURL').innerHTML = '';
+                document.getElementById('modalResourceURL').appendChild(urlLink);
             } else {
                 document.getElementById('modalResourceURLField').style.display = 'none';
             }
@@ -676,16 +680,48 @@
                 typeClass = `type-${task.taskType}`;
             }
 
-            card.innerHTML = `
-                <div class="task-card-title">${task.title}</div>
-                ${task.description ? `<div class="task-card-description">${task.description}</div>` : ''}
-                <div class="task-card-meta">
-                    <div class="task-card-meta-item">📅 Assigned: ${task.createdAt}</div>
-                    ${task.dueDate ? `<div class="task-card-meta-item">⏰ Due: ${task.dueDate}</div>` : ''}
-                </div>
-                ${task.resourceURL ? `<div class="task-card-url" title="${task.resourceURL}">${task.resourceURL}</div>` : ''}
-                ${task.taskType ? `<span class="task-type-badge ${typeClass}">${task.taskType}</span>` : ''}
-            `;
+            // Build card content safely
+            const titleDiv = document.createElement('div');
+            titleDiv.className = 'task-card-title';
+            titleDiv.textContent = task.title;
+            card.appendChild(titleDiv);
+
+            if (task.description) {
+                const descDiv = document.createElement('div');
+                descDiv.className = 'task-card-description';
+                descDiv.textContent = task.description;
+                card.appendChild(descDiv);
+            }
+
+            const metaDiv = document.createElement('div');
+            metaDiv.className = 'task-card-meta';
+            const assignedItem = document.createElement('div');
+            assignedItem.className = 'task-card-meta-item';
+            assignedItem.textContent = `📅 Assigned: ${task.createdAt}`;
+            metaDiv.appendChild(assignedItem);
+            
+            if (task.dueDate) {
+                const dueItem = document.createElement('div');
+                dueItem.className = 'task-card-meta-item';
+                dueItem.textContent = `⏰ Due: ${task.dueDate}`;
+                metaDiv.appendChild(dueItem);
+            }
+            card.appendChild(metaDiv);
+
+            if (task.resourceURL) {
+                const urlDiv = document.createElement('div');
+                urlDiv.className = 'task-card-url';
+                urlDiv.title = task.resourceURL;
+                urlDiv.textContent = task.resourceURL;
+                card.appendChild(urlDiv);
+            }
+
+            if (task.taskType) {
+                const badge = document.createElement('span');
+                badge.className = `task-type-badge ${typeClass}`;
+                badge.textContent = task.taskType;
+                card.appendChild(badge);
+            }
 
             // Double-click to show details
             card.addEventListener('dblclick', () => {
