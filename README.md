@@ -1,6 +1,10 @@
-# TaskFolio
+# Tasking
+
+**task management for ZipCode students**
 
 A multi-tenant web-based task management system for Zip Code Wilmington coding bootcamp students and instructors, built with Go and SQLite3.
+
+> **Note**: While the repository is named TaskFolio, the application is branded as **Tasking** for end users.
 
 ## Features
 
@@ -25,6 +29,28 @@ A multi-tenant web-based task management system for Zip Code Wilmington coding b
 
 ## Quick Start
 
+### With Docker (Recommended)
+
+1. Clone the repository:
+```bash
+git clone https://github.com/kristofer/TaskFolio.git
+cd TaskFolio
+```
+
+2. Start with Docker Compose:
+```bash
+docker compose up -d
+```
+
+3. Open your browser and navigate to:
+```
+http://localhost:8080
+```
+
+See [DOCKER.md](./DOCKER.md) for detailed Docker deployment instructions and production setup.
+
+### Without Docker
+
 ### Prerequisites
 - Go 1.16 or higher
 - SQLite3
@@ -44,12 +70,12 @@ go mod download
 
 3. Build the application:
 ```bash
-go build -o taskfolio
+go build -o tasking
 ```
 
 4. Run the application:
 ```bash
-./taskfolio
+./tasking
 ```
 
 5. Open your browser and navigate to:
@@ -105,6 +131,17 @@ The application comes pre-populated with demo accounts:
 The application uses the following environment variables:
 
 - `PORT`: Server port (default: 8080)
+- `DATABASE_PATH`: Path to SQLite database file (default: ./taskfolio.db)
+
+## Deployment
+
+For production deployment instructions, including:
+- Docker setup with persistent database
+- HTTPS configuration for `https://tasking.zipcode.rocks`
+- Automated backups
+- Resource limits
+
+See [DOCKER.md](./DOCKER.md) for complete deployment guide.
 
 ## Development
 
@@ -117,7 +154,7 @@ go run main.go
 ### Building for Production
 
 ```bash
-go build -o taskfolio
+go build -o tasking
 ```
 
 ## Security Notes

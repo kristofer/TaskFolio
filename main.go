@@ -42,7 +42,11 @@ type Task struct {
 
 func initDB() error {
 	var err error
-	db, err = sql.Open("sqlite3", "./taskfolio.db")
+	dbPath := os.Getenv("DATABASE_PATH")
+	if dbPath == "" {
+		dbPath = "./taskfolio.db"
+	}
+	db, err = sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return err
 	}
@@ -505,7 +509,7 @@ func main() {
 		port = "8080"
 	}
 
-	log.Printf("TaskFolio server starting on port %s...", port)
+	log.Printf("Tasking server starting on port %s...", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
 

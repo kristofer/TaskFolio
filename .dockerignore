@@ -1,0 +1,32 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+taskfolio
+tasking
+
+# Test and coverage files
+*.test
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+
+# Database files
+*.db
+
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+
+# Editor/IDE
+.idea/
+.vscode/
+
+# Environment
+.env
