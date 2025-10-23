@@ -383,7 +383,7 @@ func TestTaskTypes(t *testing.T) {
 	}
 
 	// Test different task types
-	taskTypes := []string{"reading", "coding", "submission", "document-creation"}
+	taskTypes := []string{"group-programming-project", "individual-programming-lab", "reading", "document", "resume", "prodev"}
 
 	for i, taskType := range taskTypes {
 		_, err := testDB.Exec("INSERT INTO tasks (title, task_type, owner_id, created_by) VALUES (?, ?, ?, ?)",
@@ -411,8 +411,8 @@ func TestTaskTypes(t *testing.T) {
 		t.Fatalf("Failed to query task type: %v", err)
 	}
 
-	if taskType != "reading" {
-		t.Errorf("Expected task type 'reading', got '%s'", taskType)
+	if taskType != "group-programming-project" {
+		t.Errorf("Expected task type 'group-programming-project', got '%s'", taskType)
 	}
 }
 

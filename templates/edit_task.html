@@ -144,10 +144,12 @@
                     <label for="task_type">Task Type</label>
                     <select id="task_type" name="task_type">
                         <option value="">-- Select Type --</option>
+                        <option value="group-programming-project" {{if eq .Task.TaskType "group-programming-project"}}selected{{end}}>Group Programming Project</option>
+                        <option value="individual-programming-lab" {{if eq .Task.TaskType "individual-programming-lab"}}selected{{end}}>Individual Programming Lab</option>
                         <option value="reading" {{if eq .Task.TaskType "reading"}}selected{{end}}>Reading</option>
-                        <option value="coding" {{if eq .Task.TaskType "coding"}}selected{{end}}>Coding</option>
-                        <option value="submission" {{if eq .Task.TaskType "submission"}}selected{{end}}>Submission</option>
-                        <option value="document-creation" {{if eq .Task.TaskType "document-creation"}}selected{{end}}>Document Creation</option>
+                        <option value="document" {{if eq .Task.TaskType "document"}}selected{{end}}>Document</option>
+                        <option value="resume" {{if eq .Task.TaskType "resume"}}selected{{end}}>Resume</option>
+                        <option value="prodev" {{if eq .Task.TaskType "prodev"}}selected{{end}}>ProDev</option>
                     </select>
                 </div>
                 

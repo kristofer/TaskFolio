@@ -35,7 +35,7 @@ type Task struct {
 	CreatedBy       int
 	AssignedTo      string // For group assignments, comma-separated usernames
 	CreatedAt       time.Time
-	TaskType        string    // "reading", "coding", "submission", "document-creation"
+	TaskType        string    // "group-programming-project", "individual-programming-lab", "reading", "document", "resume", "prodev"
 	ResourceURL     string    // URL pointing to resources for the task
 	CohortID        string    // Cohort name for cohort-based assignments
 	InProgressDate  *time.Time // Date when task was first moved to in_progress
@@ -80,7 +80,7 @@ func initDB() error {
 			created_by INTEGER NOT NULL,
 			assigned_to TEXT,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			task_type TEXT CHECK(task_type IN ('reading', 'coding', 'submission', 'document-creation', '')),
+			task_type TEXT CHECK(task_type IN ('group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev', '')),
 			resource_url TEXT,
 			cohort_id TEXT,
 			in_progress_date DATETIME,
