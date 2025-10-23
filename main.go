@@ -26,18 +26,20 @@ type User struct {
 }
 
 type Task struct {
-	ID          int
-	Title       string
-	Description string
-	DueDate     string
-	Status      string
-	OwnerID     int
-	CreatedBy   int
-	AssignedTo  string // For group assignments, comma-separated usernames
-	CreatedAt   time.Time
-	TaskType    string // "reading", "coding", "submission", "document-creation"
-	ResourceURL string // URL pointing to resources for the task
-	CohortID    string // Cohort name for cohort-based assignments
+	ID              int
+	Title           string
+	Description     string
+	DueDate         string
+	Status          string
+	OwnerID         int
+	CreatedBy       int
+	AssignedTo      string // For group assignments, comma-separated usernames
+	CreatedAt       time.Time
+	TaskType        string    // "reading", "coding", "submission", "document-creation"
+	ResourceURL     string    // URL pointing to resources for the task
+	CohortID        string    // Cohort name for cohort-based assignments
+	InProgressDate  *time.Time // Date when task was first moved to in_progress
+	DoneDate        *time.Time // Date when task was moved to done
 }
 
 func initDB() error {
@@ -73,7 +75,7 @@ func initDB() error {
 			title TEXT NOT NULL,
 			description TEXT,
 			due_date TEXT,
-			status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'in_progress', 'completed')),
+			status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'in_progress', 'completed', 'blocked')),
 			owner_id INTEGER NOT NULL,
 			created_by INTEGER NOT NULL,
 			assigned_to TEXT,
@@ -81,6 +83,8 @@ func initDB() error {
 			task_type TEXT CHECK(task_type IN ('reading', 'coding', 'submission', 'document-creation', '')),
 			resource_url TEXT,
 			cohort_id TEXT,
+			in_progress_date DATETIME,
+			done_date DATETIME,
 			FOREIGN KEY (owner_id) REFERENCES users(id),
 			FOREIGN KEY (created_by) REFERENCES users(id)
 		)
@@ -174,6 +178,32 @@ func migrateDatabase() error {
 			return fmt.Errorf("failed to add cohort_id column: %v", err)
 		}
 		log.Println("Added cohort_id column to tasks table")
+	}
+
+	// Check and add in_progress_date column to tasks table
+	var inProgressDateExists int
+	err = db.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='in_progress_date'
+	`).Scan(&inProgressDateExists)
+	if err == nil && inProgressDateExists == 0 {
+		_, err = db.Exec(`ALTER TABLE tasks ADD COLUMN in_progress_date DATETIME`)
+		if err != nil {
+			return fmt.Errorf("failed to add in_progress_date column: %v", err)
+		}
+		log.Println("Added in_progress_date column to tasks table")
+	}
+
+	// Check and add done_date column to tasks table
+	var doneDateExists int
+	err = db.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='done_date'
+	`).Scan(&doneDateExists)
+	if err == nil && doneDateExists == 0 {
+		_, err = db.Exec(`ALTER TABLE tasks ADD COLUMN done_date DATETIME`)
+		if err != nil {
+			return fmt.Errorf("failed to add done_date column: %v", err)
+		}
+		log.Println("Added done_date column to tasks table")
 	}
 
 	return nil
@@ -482,6 +512,111 @@ func studentProgressHandler(w http.ResponseWriter, r *http.Request) {
 	templates.ExecuteTemplate(w, "student_progress.html", data)
 }
 
+// updateTaskStatusHandler handles AJAX requests to update task status
+func updateTaskStatusHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	session, err := getSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	taskID := r.FormValue("task_id")
+	newStatus := r.FormValue("status")
+
+	// Validate status
+	validStatuses := map[string]bool{
+		"pending":     true,
+		"blocked":     true,
+		"in_progress": true,
+		"completed":   true,
+	}
+	if !validStatuses[newStatus] {
+		http.Error(w, "Invalid status", http.StatusBadRequest)
+		return
+	}
+
+	// Get current task
+	var task Task
+	var inProgressDate, doneDate sql.NullTime
+	err = db.QueryRow(`
+		SELECT id, owner_id, status, in_progress_date, done_date
+		FROM tasks WHERE id = ?
+	`, taskID).Scan(&task.ID, &task.OwnerID, &task.Status, &inProgressDate, &doneDate)
+
+	if err != nil {
+		http.Error(w, "Task not found", http.StatusNotFound)
+		return
+	}
+
+	// Check permissions - students can only update their own tasks
+	if user.Role == "student" && task.OwnerID != user.ID {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	// Manage date fields based on status change
+	now := time.Now()
+	
+	// Check what needs to be updated based on status transition
+	if task.Status == "completed" && newStatus != "completed" {
+		// Clear done_date when moving out of completed
+		if newStatus == "in_progress" && !inProgressDate.Valid {
+			// Also set in_progress_date if moving to in_progress for first time
+			_, err = db.Exec(`
+				UPDATE tasks 
+				SET status = ?, done_date = NULL, in_progress_date = ?
+				WHERE id = ?
+			`, newStatus, now, taskID)
+		} else {
+			_, err = db.Exec(`
+				UPDATE tasks 
+				SET status = ?, done_date = NULL
+				WHERE id = ?
+			`, newStatus, taskID)
+		}
+	} else if newStatus == "completed" {
+		// Set done_date when moving to completed
+		_, err = db.Exec(`
+			UPDATE tasks 
+			SET status = ?, done_date = ?
+			WHERE id = ?
+		`, newStatus, now, taskID)
+	} else if newStatus == "in_progress" && !inProgressDate.Valid {
+		// Set in_progress_date when moving to in_progress for the first time
+		_, err = db.Exec(`
+			UPDATE tasks 
+			SET status = ?, in_progress_date = ?
+			WHERE id = ?
+		`, newStatus, now, taskID)
+	} else {
+		// Just update status
+		_, err = db.Exec(`
+			UPDATE tasks 
+			SET status = ?
+			WHERE id = ?
+		`, newStatus, taskID)
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"success": true}`))
+}
+
 func main() {
 	if err := initDB(); err != nil {
 		log.Fatal("Failed to initialize database:", err)
@@ -499,6 +634,7 @@ func main() {
 	http.HandleFunc("/tasks/add", addTaskHandler)
 	http.HandleFunc("/tasks/edit", editTaskHandler)
 	http.HandleFunc("/tasks/delete", deleteTaskHandler)
+	http.HandleFunc("/tasks/update-status", updateTaskStatusHandler)
 	http.HandleFunc("/students", studentsHandler)
 	http.HandleFunc("/students/add", addStudentHandler)
 	http.HandleFunc("/students/edit", editStudentHandler)
@@ -906,7 +1042,8 @@ func getTasks(user User) ([]Task, error) {
 		// Instructors see all tasks they created
 		rows, err = db.Query(`
 			SELECT id, title, description, due_date, status, owner_id, created_by, created_at,
-			       COALESCE(task_type, ''), COALESCE(resource_url, ''), COALESCE(cohort_id, '')
+			       COALESCE(task_type, ''), COALESCE(resource_url, ''), COALESCE(cohort_id, ''),
+			       in_progress_date, done_date
 			FROM tasks 
 			WHERE created_by = ?
 			ORDER BY created_at DESC
@@ -915,7 +1052,8 @@ func getTasks(user User) ([]Task, error) {
 		// Students see their own tasks
 		rows, err = db.Query(`
 			SELECT id, title, description, due_date, status, owner_id, created_by, created_at,
-			       COALESCE(task_type, ''), COALESCE(resource_url, ''), COALESCE(cohort_id, '')
+			       COALESCE(task_type, ''), COALESCE(resource_url, ''), COALESCE(cohort_id, ''),
+			       in_progress_date, done_date
 			FROM tasks 
 			WHERE owner_id = ?
 			ORDER BY created_at DESC
@@ -929,11 +1067,18 @@ func getTasks(user User) ([]Task, error) {
 
 	for rows.Next() {
 		var task Task
+		var inProgressDate, doneDate sql.NullTime
 		err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate,
 			&task.Status, &task.OwnerID, &task.CreatedBy, &task.CreatedAt,
-			&task.TaskType, &task.ResourceURL, &task.CohortID)
+			&task.TaskType, &task.ResourceURL, &task.CohortID, &inProgressDate, &doneDate)
 		if err != nil {
 			return nil, err
+		}
+		if inProgressDate.Valid {
+			task.InProgressDate = &inProgressDate.Time
+		}
+		if doneDate.Valid {
+			task.DoneDate = &doneDate.Time
 		}
 		tasks = append(tasks, task)
 	}
