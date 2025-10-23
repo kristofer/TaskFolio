@@ -275,6 +275,108 @@
             color: #9ca3af;
             font-size: 14px;
         }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.3s;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            animation: slideIn 0.3s;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .modal-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1f2937;
+        }
+        .close-btn {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .close-btn:hover {
+            background: #dc2626;
+        }
+        .modal-body {
+            color: #4b5563;
+        }
+        .modal-field {
+            margin-bottom: 20px;
+        }
+        .modal-field-label {
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .modal-field-value {
+            color: #1f2937;
+            font-size: 16px;
+            line-height: 1.6;
+        }
+        .modal-field-value a {
+            color: #667eea;
+            text-decoration: none;
+            word-break: break-all;
+        }
+        .modal-field-value a:hover {
+            text-decoration: underline;
+        }
+        .task-card-url {
+            font-size: 11px;
+            color: #667eea;
+            margin-top: 4px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .task-card-url::before {
+            content: "🔗 ";
+        }
     </style>
 </head>
 <body>
@@ -354,51 +456,100 @@
         </div>
         {{end}}
         {{else}}
-        <!-- Instructor List View -->
+        <!-- Kanban Board for Instructors -->
         {{if .Tasks}}
-        <div class="tasks-grid">
-            {{range .Tasks}}
-            <div class="task-card-list">
-                <div class="task-header">
-                    <div class="task-title">{{.Title}}</div>
-                    <span class="status-badge status-{{.Status}}">{{.Status}}</span>
+        <div class="kanban-board">
+            <!-- TODO Column -->
+            <div class="kanban-column" data-status="pending">
+                <div class="column-header">
+                    <div>
+                        <span class="column-title">TODO</span>
+                        <span class="column-count" id="count-pending">0</span>
+                    </div>
+                    <button class="add-task-btn" onclick="window.location.href='/tasks/add'" title="Add new task">+</button>
                 </div>
-                <div class="task-description">{{.Description}}</div>
-                <div class="task-meta">
-                    {{if .DueDate}}
-                    <div>📅 Due: {{.DueDate}}</div>
-                    {{end}}
-                    <div>🕐 Created: {{.CreatedAt.Format "Jan 2, 2006"}}</div>
-                    {{if .TaskType}}
-                    <div>🏷️ Type: {{.TaskType}}</div>
-                    {{end}}
-                    {{if .CohortID}}
-                    <div>👥 Cohort: {{.CohortID}}</div>
-                    {{end}}
-                </div>
-                {{if .ResourceURL}}
-                <div class="task-meta">
-                    <div>🔗 <a href="{{.ResourceURL}}" target="_blank" style="color: #667eea; text-decoration: none;">Resource Link</a></div>
-                </div>
-                {{end}}
-                <div class="task-actions">
-                    <a href="/tasks/edit?id={{.ID}}" class="btn btn-primary btn-small">Edit</a>
-                    <a href="/tasks/delete?id={{.ID}}" class="btn btn-danger btn-small" 
-                       onclick="return confirm('Are you sure you want to delete this task?')">Delete</a>
-                </div>
+                <div class="task-list" id="list-pending"></div>
             </div>
-            {{end}}
+
+            <!-- BLOCKED Column -->
+            <div class="kanban-column" data-status="blocked">
+                <div class="column-header">
+                    <div>
+                        <span class="column-title">BLOCKED</span>
+                        <span class="column-count" id="count-blocked">0</span>
+                    </div>
+                </div>
+                <div class="task-list" id="list-blocked"></div>
+            </div>
+
+            <!-- IN PROGRESS Column -->
+            <div class="kanban-column" data-status="in_progress">
+                <div class="column-header">
+                    <div>
+                        <span class="column-title">IN PROGRESS</span>
+                        <span class="column-count" id="count-in_progress">0</span>
+                    </div>
+                </div>
+                <div class="task-list" id="list-in_progress"></div>
+            </div>
+
+            <!-- DONE Column -->
+            <div class="kanban-column" data-status="completed">
+                <div class="column-header">
+                    <div>
+                        <span class="column-title">DONE</span>
+                        <span class="column-count" id="count-completed">0</span>
+                    </div>
+                </div>
+                <div class="task-list" id="list-completed"></div>
+            </div>
         </div>
         {{else}}
         <div class="empty-state">
             <h2>No tasks yet</h2>
             <p>Get started by adding your first task!</p>
+            <a href="/tasks/add" class="btn btn-primary" style="margin-top: 20px; display: inline-block;">+ Add New Task</a>
         </div>
         {{end}}
         {{end}}
     </div>
 
-    {{if eq .User.Role "student"}}
+    <!-- Task Details Modal -->
+    <div id="taskModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="modalTitle"></h2>
+                <button class="close-btn" onclick="closeModal()">Close</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-field">
+                    <div class="modal-field-label">Description</div>
+                    <div class="modal-field-value" id="modalDescription"></div>
+                </div>
+                <div class="modal-field">
+                    <div class="modal-field-label">Status</div>
+                    <div class="modal-field-value" id="modalStatus"></div>
+                </div>
+                <div class="modal-field" id="modalDueDateField" style="display: none;">
+                    <div class="modal-field-label">Due Date</div>
+                    <div class="modal-field-value" id="modalDueDate"></div>
+                </div>
+                <div class="modal-field" id="modalTaskTypeField" style="display: none;">
+                    <div class="modal-field-label">Task Type</div>
+                    <div class="modal-field-value" id="modalTaskType"></div>
+                </div>
+                <div class="modal-field" id="modalResourceURLField" style="display: none;">
+                    <div class="modal-field-label">Resource URL</div>
+                    <div class="modal-field-value" id="modalResourceURL"></div>
+                </div>
+                <div class="modal-field">
+                    <div class="modal-field-label">Created Date</div>
+                    <div class="modal-field-value" id="modalCreatedAt"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Task data from server
         const tasks = [
@@ -410,11 +561,67 @@
                 dueDate: "{{.DueDate}}",
                 status: "{{.Status}}",
                 taskType: "{{.TaskType}}",
+                resourceURL: "{{.ResourceURL}}",
                 createdAt: "{{.CreatedAt.Format "Jan 2, 2006"}}"{{if .DoneDate}},
                 doneDate: "{{.DoneDate.Format "2006-01-02T15:04:05Z07:00"}}"{{end}}
             },
             {{end}}
         ];
+
+        // Modal functions
+        function showTaskDetails(taskId) {
+            const task = tasks.find(t => t.id == taskId);
+            if (!task) return;
+
+            document.getElementById('modalTitle').textContent = task.title;
+            document.getElementById('modalDescription').textContent = task.description || 'No description';
+            document.getElementById('modalStatus').textContent = task.status.toUpperCase().replace('_', ' ');
+            
+            // Due Date
+            if (task.dueDate) {
+                document.getElementById('modalDueDateField').style.display = 'block';
+                document.getElementById('modalDueDate').textContent = task.dueDate;
+            } else {
+                document.getElementById('modalDueDateField').style.display = 'none';
+            }
+
+            // Task Type
+            if (task.taskType) {
+                document.getElementById('modalTaskTypeField').style.display = 'block';
+                document.getElementById('modalTaskType').textContent = task.taskType;
+            } else {
+                document.getElementById('modalTaskTypeField').style.display = 'none';
+            }
+
+            // Resource URL
+            if (task.resourceURL) {
+                document.getElementById('modalResourceURLField').style.display = 'block';
+                const urlLink = document.createElement('a');
+                urlLink.href = task.resourceURL;
+                urlLink.target = '_blank';
+                urlLink.textContent = task.resourceURL;
+                document.getElementById('modalResourceURL').innerHTML = '';
+                document.getElementById('modalResourceURL').appendChild(urlLink);
+            } else {
+                document.getElementById('modalResourceURLField').style.display = 'none';
+            }
+
+            document.getElementById('modalCreatedAt').textContent = task.createdAt;
+
+            document.getElementById('taskModal').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('taskModal').style.display = 'none';
+        }
+
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('taskModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        }
 
         // Render tasks to kanban board
         function renderTasks() {
@@ -473,15 +680,53 @@
                 typeClass = `type-${task.taskType}`;
             }
 
-            card.innerHTML = `
-                <div class="task-card-title">${task.title}</div>
-                ${task.description ? `<div class="task-card-description">${task.description}</div>` : ''}
-                <div class="task-card-meta">
-                    <div class="task-card-meta-item">📅 Assigned: ${task.createdAt}</div>
-                    ${task.dueDate ? `<div class="task-card-meta-item">⏰ Due: ${task.dueDate}</div>` : ''}
-                </div>
-                ${task.taskType ? `<span class="task-type-badge ${typeClass}">${task.taskType}</span>` : ''}
-            `;
+            // Build card content safely
+            const titleDiv = document.createElement('div');
+            titleDiv.className = 'task-card-title';
+            titleDiv.textContent = task.title;
+            card.appendChild(titleDiv);
+
+            if (task.description) {
+                const descDiv = document.createElement('div');
+                descDiv.className = 'task-card-description';
+                descDiv.textContent = task.description;
+                card.appendChild(descDiv);
+            }
+
+            const metaDiv = document.createElement('div');
+            metaDiv.className = 'task-card-meta';
+            const assignedItem = document.createElement('div');
+            assignedItem.className = 'task-card-meta-item';
+            assignedItem.textContent = `📅 Assigned: ${task.createdAt}`;
+            metaDiv.appendChild(assignedItem);
+            
+            if (task.dueDate) {
+                const dueItem = document.createElement('div');
+                dueItem.className = 'task-card-meta-item';
+                dueItem.textContent = `⏰ Due: ${task.dueDate}`;
+                metaDiv.appendChild(dueItem);
+            }
+            card.appendChild(metaDiv);
+
+            if (task.resourceURL) {
+                const urlDiv = document.createElement('div');
+                urlDiv.className = 'task-card-url';
+                urlDiv.title = task.resourceURL;
+                urlDiv.textContent = task.resourceURL;
+                card.appendChild(urlDiv);
+            }
+
+            if (task.taskType) {
+                const badge = document.createElement('span');
+                badge.className = `task-type-badge ${typeClass}`;
+                badge.textContent = task.taskType;
+                card.appendChild(badge);
+            }
+
+            // Double-click to show details
+            card.addEventListener('dblclick', () => {
+                showTaskDetails(task.id);
+            });
 
             // Drag events
             card.addEventListener('dragstart', handleDragStart);
@@ -572,6 +817,5 @@
         // Initial render
         renderTasks();
     </script>
-    {{end}}
 </body>
 </html>

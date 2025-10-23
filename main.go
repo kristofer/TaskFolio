@@ -1039,15 +1039,15 @@ func getTasks(user User) ([]Task, error) {
 	var err error
 
 	if user.Role == "instructor" {
-		// Instructors see all tasks they created
+		// Instructors see only tasks they created AND assigned to themselves
 		rows, err = db.Query(`
 			SELECT id, title, description, due_date, status, owner_id, created_by, created_at,
 			       COALESCE(task_type, ''), COALESCE(resource_url, ''), COALESCE(cohort_id, ''),
 			       in_progress_date, done_date
 			FROM tasks 
-			WHERE created_by = ?
+			WHERE created_by = ? AND owner_id = ?
 			ORDER BY created_at DESC
-		`, user.ID)
+		`, user.ID, user.ID)
 	} else {
 		// Students see their own tasks
 		rows, err = db.Query(`
