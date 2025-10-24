@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -328,17 +329,7 @@ func migrateTaskTypeConstraint() error {
 func containsOldTaskTypes(sql string) bool {
 	oldTypes := []string{"'coding'", "'submission'", "'document-creation'"}
 	for _, oldType := range oldTypes {
-		if len(sql) > 0 && contains(sql, oldType) {
-			return true
-		}
-	}
-	return false
-}
-
-// contains checks if a string contains a substring
-func contains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
+		if strings.Contains(sql, oldType) {
 			return true
 		}
 	}

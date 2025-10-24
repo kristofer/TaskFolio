@@ -1241,8 +1241,8 @@ func TestEditStudentAllFields(t *testing.T) {
 
 // TestTaskTypeMigration verifies that the migration from old task type constraints to new ones works correctly
 func TestTaskTypeMigration(t *testing.T) {
-// Create a database with the OLD task type constraint
-testDB, err := sql.Open("sqlite3", ":memory:")
+	// Create a database with the old task type constraint
+	testDB, err := sql.Open("sqlite3", ":memory:")
 if err != nil {
 t.Fatalf("Failed to open test database: %v", err)
 }
