@@ -34,7 +34,7 @@ COPY --from=builder /app/templates ./templates
 RUN mkdir -p /data
 
 # Expose port
-EXPOSE 8080
+EXPOSE 9205
 
 # Set environment variable for database location
 ENV DATABASE_PATH=/data/taskfolio.db

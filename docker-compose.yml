@@ -5,12 +5,12 @@ services:
       dockerfile: Dockerfile
     container_name: tasking
     ports:
-      - "8080:8080"
+      - "9205:9205"
     volumes:
       # Persistent database storage
       - tasking-data:/data
     environment:
-      - PORT=8080
+      - PORT=9205
     restart: unless-stopped
 
 volumes:
