@@ -206,7 +206,143 @@ func migrateDatabase() error {
 		log.Println("Added done_date column to tasks table")
 	}
 
+	// Migrate task_type CHECK constraint to new values
+	// We need to check if the old constraint exists and recreate the table if needed
+	if err := migrateTaskTypeConstraint(); err != nil {
+		return fmt.Errorf("failed to migrate task_type constraint: %v", err)
+	}
+
 	return nil
+}
+
+// migrateTaskTypeConstraint recreates the tasks table with the updated CHECK constraint
+func migrateTaskTypeConstraint() error {
+	// Check if tasks table exists
+	var tableExists int
+	err := db.QueryRow(`
+		SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='tasks'
+	`).Scan(&tableExists)
+	if err != nil || tableExists == 0 {
+		// Table doesn't exist, no migration needed
+		return nil
+	}
+
+	// Get the current table schema
+	var sql string
+	err = db.QueryRow(`
+		SELECT sql FROM sqlite_master WHERE type='table' AND name='tasks'
+	`).Scan(&sql)
+	if err != nil {
+		return err
+	}
+
+	// Check if the old constraint exists (contains 'coding', 'submission', or 'document-creation')
+	needsMigration := false
+	if containsOldTaskTypes(sql) {
+		needsMigration = true
+	}
+
+	if !needsMigration {
+		// No migration needed
+		return nil
+	}
+
+	log.Println("Migrating tasks table to update task_type CHECK constraint...")
+
+	// Start a transaction
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Create a new table with the correct constraint
+	_, err = tx.Exec(`
+		CREATE TABLE tasks_new (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			description TEXT,
+			due_date TEXT,
+			status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'in_progress', 'completed', 'blocked')),
+			owner_id INTEGER NOT NULL,
+			created_by INTEGER NOT NULL,
+			assigned_to TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			task_type TEXT CHECK(task_type IN ('group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev', '')),
+			resource_url TEXT,
+			cohort_id TEXT,
+			in_progress_date DATETIME,
+			done_date DATETIME,
+			FOREIGN KEY (owner_id) REFERENCES users(id),
+			FOREIGN KEY (created_by) REFERENCES users(id)
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Copy data from old table to new table, mapping old task types to new ones
+	// Old task types: 'reading', 'coding', 'submission', 'document-creation'
+	// New task types: 'group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev'
+	// Mapping: 'coding' -> 'individual-programming-lab', 'submission' -> '', 'document-creation' -> 'document'
+	_, err = tx.Exec(`
+		INSERT INTO tasks_new (id, title, description, due_date, status, owner_id, created_by, assigned_to, created_at, task_type, resource_url, cohort_id, in_progress_date, done_date)
+		SELECT id, title, description, due_date, status, owner_id, created_by, 
+		       COALESCE(assigned_to, ''), created_at, 
+		       CASE COALESCE(task_type, '')
+		           WHEN 'coding' THEN 'individual-programming-lab'
+		           WHEN 'submission' THEN ''
+		           WHEN 'document-creation' THEN 'document'
+		           ELSE COALESCE(task_type, '')
+		       END,
+		       COALESCE(resource_url, ''), COALESCE(cohort_id, ''),
+		       in_progress_date, done_date
+		FROM tasks
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Drop the old table
+	_, err = tx.Exec(`DROP TABLE tasks`)
+	if err != nil {
+		return err
+	}
+
+	// Rename the new table
+	_, err = tx.Exec(`ALTER TABLE tasks_new RENAME TO tasks`)
+	if err != nil {
+		return err
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+
+	log.Println("Successfully migrated tasks table with new task_type values")
+	return nil
+}
+
+// containsOldTaskTypes checks if the table schema contains old task type values
+func containsOldTaskTypes(sql string) bool {
+	oldTypes := []string{"'coding'", "'submission'", "'document-creation'"}
+	for _, oldType := range oldTypes {
+		if len(sql) > 0 && contains(sql, oldType) {
+			return true
+		}
+	}
+	return false
+}
+
+// contains checks if a string contains a substring
+func contains(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
 
 // studentsHandler displays list of students for instructors to manage

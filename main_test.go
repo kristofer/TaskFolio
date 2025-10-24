@@ -1238,3 +1238,112 @@ func TestEditStudentAllFields(t *testing.T) {
 		t.Errorf("Expected suspended %v, got %v", newSuspended, suspended)
 	}
 }
+
+// TestTaskTypeMigration verifies that the migration from old task type constraints to new ones works correctly
+func TestTaskTypeMigration(t *testing.T) {
+// Create a database with the OLD task type constraint
+testDB, err := sql.Open("sqlite3", ":memory:")
+if err != nil {
+t.Fatalf("Failed to open test database: %v", err)
+}
+defer testDB.Close()
+
+// Create users table
+_, err = testDB.Exec(`
+CREATE TABLE users (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+username TEXT UNIQUE NOT NULL,
+password TEXT NOT NULL,
+role TEXT NOT NULL CHECK(role IN ('student', 'instructor')),
+cohort_name TEXT,
+is_suspended BOOLEAN DEFAULT 0
+)
+`)
+if err != nil {
+t.Fatalf("Failed to create users table: %v", err)
+}
+
+// Create tasks table with OLD constraint (simulating an existing database)
+_, err = testDB.Exec(`
+CREATE TABLE tasks (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+title TEXT NOT NULL,
+description TEXT,
+due_date TEXT,
+status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'in_progress', 'completed', 'blocked')),
+owner_id INTEGER NOT NULL,
+created_by INTEGER NOT NULL,
+assigned_to TEXT,
+created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+task_type TEXT CHECK(task_type IN ('reading', 'coding', 'submission', 'document-creation', '')),
+resource_url TEXT,
+cohort_id TEXT,
+in_progress_date DATETIME,
+done_date DATETIME,
+FOREIGN KEY (owner_id) REFERENCES users(id),
+FOREIGN KEY (created_by) REFERENCES users(id)
+)
+`)
+if err != nil {
+t.Fatalf("Failed to create tasks table with old schema: %v", err)
+}
+
+// Insert test user and task with old task type
+_, err = testDB.Exec(`INSERT INTO users (id, username, password, role) VALUES (1, 'testuser', 'pass', 'student')`)
+if err != nil {
+t.Fatalf("Failed to insert test user: %v", err)
+}
+
+_, err = testDB.Exec(`INSERT INTO tasks (title, owner_id, created_by, task_type) VALUES ('Old Task', 1, 1, 'reading')`)
+if err != nil {
+t.Fatalf("Failed to insert test task: %v", err)
+}
+
+// Verify that new task types are rejected before migration
+_, err = testDB.Exec(`INSERT INTO tasks (title, owner_id, created_by, task_type) VALUES ('New Task', 1, 1, 'group-programming-project')`)
+if err == nil {
+t.Fatal("Expected new task type to be rejected before migration, but it was accepted")
+}
+
+// Run the migration
+db = testDB
+if err := migrateTaskTypeConstraint(); err != nil {
+t.Fatalf("Migration failed: %v", err)
+}
+
+// Verify old data is preserved
+var count int
+err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE title = 'Old Task'").Scan(&count)
+if err != nil {
+t.Fatalf("Failed to query old task: %v", err)
+}
+if count != 1 {
+t.Fatal("Old task data was lost during migration!")
+}
+
+// Test that we can now insert all new task types
+newTaskTypes := []string{
+"group-programming-project",
+"individual-programming-lab",
+"reading",
+"document",
+"resume",
+"prodev",
+}
+
+for _, taskType := range newTaskTypes {
+_, err = testDB.Exec(`INSERT INTO tasks (title, owner_id, created_by, task_type) VALUES (?, 1, 1, ?)`, "Task: "+taskType, taskType)
+if err != nil {
+t.Errorf("Failed to insert new task type '%s': %v", taskType, err)
+}
+}
+
+// Test that old task types are rejected after migration
+oldTaskTypes := []string{"coding", "submission", "document-creation"}
+for _, taskType := range oldTaskTypes {
+_, err = testDB.Exec(`INSERT INTO tasks (title, owner_id, created_by, task_type) VALUES (?, 1, 1, ?)`, "Bad Task: "+taskType, taskType)
+if err == nil {
+t.Errorf("Old task type '%s' should have been rejected after migration", taskType)
+}
+}
+}
