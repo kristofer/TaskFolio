@@ -669,7 +669,7 @@ func taskStatsHandler(w http.ResponseWriter, r *http.Request) {
 		ResourceURL string
 		CreatedBy   int
 		CohortID    string
-		CreatedAt   time.Time
+		CreatedAt   string
 		TotalCount  int
 		InProgress  int
 		Completed   int
@@ -678,8 +678,8 @@ func taskStatsHandler(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Query(`
 		SELECT 
 			t.title,
-			t.description,
-			t.due_date,
+			COALESCE(t.description, '') as description,
+			COALESCE(t.due_date, '') as due_date,
 			COALESCE(t.task_type, '') as task_type,
 			COALESCE(t.resource_url, '') as resource_url,
 			t.created_by,
