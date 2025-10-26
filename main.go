@@ -639,6 +639,125 @@ func studentProgressHandler(w http.ResponseWriter, r *http.Request) {
 	templates.ExecuteTemplate(w, "student_progress.html", data)
 }
 
+// instructorsHandler displays list of instructors for instructors to manage
+func instructorsHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can access this page
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	// Get all instructors
+	rows, err := db.Query(`
+		SELECT id, username
+		FROM users WHERE role = 'instructor' ORDER BY username
+	`)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var instructors []User
+	for rows.Next() {
+		var i User
+		i.Role = "instructor"
+		rows.Scan(&i.ID, &i.Username)
+		instructors = append(instructors, i)
+	}
+
+	data := struct {
+		User        User
+		Instructors []User
+	}{
+		User:        user,
+		Instructors: instructors,
+	}
+
+	templates.ExecuteTemplate(w, "instructors.html", data)
+}
+
+// addInstructorHandler handles adding new instructors
+func addInstructorHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can add instructors
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	if r.Method == "GET" {
+		data := struct {
+			User  User
+			Error string
+		}{
+			User: user,
+		}
+		templates.ExecuteTemplate(w, "add_instructor.html", data)
+		return
+	}
+
+	username := r.FormValue("username")
+	password := r.FormValue("password")
+
+	// Validate required fields
+	if username == "" || password == "" {
+		data := struct {
+			User  User
+			Error string
+		}{
+			User:  user,
+			Error: "Username and password are required",
+		}
+		templates.ExecuteTemplate(w, "add_instructor.html", data)
+		return
+	}
+
+	// Insert new instructor
+	_, err = db.Exec(`
+		INSERT INTO users (username, password, role, cohort_name, is_suspended)
+		VALUES (?, ?, 'instructor', NULL, 0)
+	`, username, password)
+
+	if err != nil {
+		// Check if it's a unique constraint violation
+		data := struct {
+			User  User
+			Error string
+		}{
+			User:  user,
+			Error: "Username already exists. Please choose a different username.",
+		}
+		templates.ExecuteTemplate(w, "add_instructor.html", data)
+		return
+	}
+
+	http.Redirect(w, r, "/instructors", http.StatusSeeOther)
+}
+
 // updateTaskStatusHandler handles AJAX requests to update task status
 func updateTaskStatusHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
@@ -766,6 +885,8 @@ func main() {
 	http.HandleFunc("/students/add", addStudentHandler)
 	http.HandleFunc("/students/edit", editStudentHandler)
 	http.HandleFunc("/students/progress", studentProgressHandler)
+	http.HandleFunc("/instructors", instructorsHandler)
+	http.HandleFunc("/instructors/add", addInstructorHandler)
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -1109,15 +1230,27 @@ func deleteTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Verify ownership or instructor role
 	var task Task
-	err = db.QueryRow("SELECT owner_id, created_by FROM tasks WHERE id = ?", taskID).
-		Scan(&task.OwnerID, &task.CreatedBy)
+	var creatorRole string
+	err = db.QueryRow(`
+		SELECT t.owner_id, t.created_by, u.role 
+		FROM tasks t 
+		JOIN users u ON t.created_by = u.id 
+		WHERE t.id = ?
+	`, taskID).Scan(&task.OwnerID, &task.CreatedBy, &creatorRole)
 
 	if err != nil {
 		http.Error(w, "Task not found", http.StatusNotFound)
 		return
 	}
 
+	// Students can only delete their own tasks
 	if user.Role == "student" && task.OwnerID != user.ID {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	// Instructors can delete tasks created by any instructor, or their own tasks
+	if user.Role == "instructor" && creatorRole != "instructor" && task.OwnerID != user.ID {
 		http.Error(w, "Unauthorized", http.StatusForbidden)
 		return
 	}
