@@ -639,6 +639,8 @@ func studentProgressHandler(w http.ResponseWriter, r *http.Request) {
 	templates.ExecuteTemplate(w, "student_progress.html", data)
 }
 
+// taskStatsHandler shows completion statistics for group/cohort tasks
+func taskStatsHandler(w http.ResponseWriter, r *http.Request) {
 // instructorsHandler displays list of instructors for instructors to manage
 func instructorsHandler(w http.ResponseWriter, r *http.Request) {
 	session, err := getSession(r)
@@ -653,12 +655,49 @@ func instructorsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Only instructors can view task statistics
 	// Only instructors can access this page
 	if user.Role != "instructor" {
 		http.Error(w, "Unauthorized", http.StatusForbidden)
 		return
 	}
 
+	// Get all unique group tasks (tasks created by instructors that were assigned to multiple students)
+	// We identify these by looking at tasks with the same title, created_by, and cohort_id
+	type GroupTask struct {
+		Title       string
+		Description string
+		DueDate     string
+		TaskType    string
+		ResourceURL string
+		CreatedBy   int
+		CohortID    string
+		CreatedAt   string
+		TotalCount  int
+		InProgress  int
+		Completed   int
+	}
+
+	rows, err := db.Query(`
+		SELECT 
+			t.title,
+			COALESCE(t.description, '') as description,
+			COALESCE(t.due_date, '') as due_date,
+			COALESCE(t.task_type, '') as task_type,
+			COALESCE(t.resource_url, '') as resource_url,
+			t.created_by,
+			COALESCE(t.cohort_id, '') as cohort_id,
+			MIN(t.created_at) as created_at,
+			COUNT(*) as total_count,
+			SUM(CASE WHEN t.status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+			SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as completed
+		FROM tasks t
+		JOIN users u ON t.owner_id = u.id
+		WHERE t.created_by IN (SELECT id FROM users WHERE role = 'instructor')
+		AND u.role = 'student'
+		GROUP BY t.title, t.created_by, COALESCE(t.cohort_id, '')
+		HAVING COUNT(*) > 1
+		ORDER BY created_at DESC
 	// Get all instructors
 	rows, err := db.Query(`
 		SELECT id, username
@@ -669,6 +708,30 @@ func instructorsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
+
+	var groupTasks []GroupTask
+	for rows.Next() {
+		var gt GroupTask
+		err := rows.Scan(&gt.Title, &gt.Description, &gt.DueDate, &gt.TaskType,
+			&gt.ResourceURL, &gt.CreatedBy, &gt.CohortID, &gt.CreatedAt,
+			&gt.TotalCount, &gt.InProgress, &gt.Completed)
+		if err != nil {
+			log.Printf("Error scanning group task: %v", err)
+			continue
+		}
+		groupTasks = append(groupTasks, gt)
+	}
+
+	data := struct {
+		User       User
+		GroupTasks []GroupTask
+	}{
+		User:       user,
+		GroupTasks: groupTasks,
+	}
+
+	templates.ExecuteTemplate(w, "task_stats.html", data)
+}
 
 	var instructors []User
 	for rows.Next() {
@@ -869,8 +932,29 @@ func main() {
 	}
 	defer db.Close()
 
-	// Load templates
-	templates = template.Must(template.ParseGlob("templates/*.html"))
+	// Load templates with custom functions
+	funcMap := template.FuncMap{
+		"mul": func(a, b float64) float64 { return a * b },
+		"div": func(a, b float64) float64 {
+			if b == 0 {
+				return 0
+			}
+			return a / b
+		},
+		"formatDate": func(dateStr string) string {
+			// Parse SQLite timestamp format and convert to friendly format
+			t, err := time.Parse("2006-01-02 15:04:05", dateStr)
+			if err != nil {
+				// Try alternate format
+				t, err = time.Parse(time.RFC3339, dateStr)
+				if err != nil {
+					return dateStr // Return as-is if parsing fails
+				}
+			}
+			return t.Format("Jan 2, 2006")
+		},
+	}
+	templates = template.Must(template.New("").Funcs(funcMap).ParseGlob("templates/*.html"))
 
 	// Setup routes
 	http.HandleFunc("/", homeHandler)
@@ -885,6 +969,7 @@ func main() {
 	http.HandleFunc("/students/add", addStudentHandler)
 	http.HandleFunc("/students/edit", editStudentHandler)
 	http.HandleFunc("/students/progress", studentProgressHandler)
+	http.HandleFunc("/tasks/stats", taskStatsHandler)
 	http.HandleFunc("/instructors", instructorsHandler)
 	http.HandleFunc("/instructors/add", addInstructorHandler)
 
