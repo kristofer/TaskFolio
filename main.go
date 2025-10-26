@@ -27,20 +27,20 @@ type User struct {
 }
 
 type Task struct {
-	ID              int
-	Title           string
-	Description     string
-	DueDate         string
-	Status          string
-	OwnerID         int
-	CreatedBy       int
-	AssignedTo      string // For group assignments, comma-separated usernames
-	CreatedAt       time.Time
-	TaskType        string    // "group-programming-project", "individual-programming-lab", "reading", "document", "resume", "prodev"
-	ResourceURL     string    // URL pointing to resources for the task
-	CohortID        string    // Cohort name for cohort-based assignments
-	InProgressDate  *time.Time // Date when task was first moved to in_progress
-	DoneDate        *time.Time // Date when task was moved to done
+	ID             int
+	Title          string
+	Description    string
+	DueDate        string
+	Status         string
+	OwnerID        int
+	CreatedBy      int
+	AssignedTo     string // For group assignments, comma-separated usernames
+	CreatedAt      time.Time
+	TaskType       string     // "group-programming-project", "individual-programming-lab", "reading", "document", "resume", "prodev"
+	ResourceURL    string     // URL pointing to resources for the task
+	CohortID       string     // Cohort name for cohort-based assignments
+	InProgressDate *time.Time // Date when task was first moved to in_progress
+	DoneDate       *time.Time // Date when task was moved to done
 }
 
 func initDB() error {
@@ -101,7 +101,7 @@ func initDB() error {
 
 	// Insert demo users if not exists
 	_, err = db.Exec(`
-		INSERT OR IGNORE INTO users (id, username, password, role, cohort_name, is_suspended) VALUES 
+		INSERT OR IGNORE INTO users (id, username, password, role, cohort_name, is_suspended) VALUES
 		(1, 'instructor1', 'password123', 'instructor', NULL, 0),
 		(2, 'student1', 'password123', 'student', 'Java11.2', 0),
 		(3, 'student2', 'password123', 'student', 'Java11.2', 0),
@@ -288,8 +288,8 @@ func migrateTaskTypeConstraint() error {
 	// Mapping: 'coding' -> 'individual-programming-lab', 'submission' -> '', 'document-creation' -> 'document'
 	_, err = tx.Exec(`
 		INSERT INTO tasks_new (id, title, description, due_date, status, owner_id, created_by, assigned_to, created_at, task_type, resource_url, cohort_id, in_progress_date, done_date)
-		SELECT id, title, description, due_date, status, owner_id, created_by, 
-		       COALESCE(assigned_to, ''), created_at, 
+		SELECT id, title, description, due_date, status, owner_id, created_by,
+		       COALESCE(assigned_to, ''), created_at,
 		       CASE COALESCE(task_type, '')
 		           WHEN 'coding' THEN 'individual-programming-lab'
 		           WHEN 'submission' THEN ''
@@ -445,13 +445,13 @@ func editStudentHandler(w http.ResponseWriter, r *http.Request) {
 	// If password is provided, update it; otherwise, only update other fields
 	if password != "" {
 		_, err = db.Exec(`
-			UPDATE users 
+			UPDATE users
 			SET username = ?, cohort_name = ?, is_suspended = ?, password = ?
 			WHERE id = ? AND role = 'student'
 		`, username, cohortName, isSuspended, password, studentID)
 	} else {
 		_, err = db.Exec(`
-			UPDATE users 
+			UPDATE users
 			SET username = ?, cohort_name = ?, is_suspended = ?
 			WHERE id = ? AND role = 'student'
 		`, username, cohortName, isSuspended, studentID)
@@ -578,7 +578,7 @@ func studentProgressHandler(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Query(`
 		SELECT id, title, description, due_date, status, created_at,
 		       COALESCE(task_type, ''), COALESCE(resource_url, '')
-		FROM tasks 
+		FROM tasks
 		WHERE owner_id = ?
 		ORDER BY created_at DESC
 	`, studentID)
@@ -641,8 +641,6 @@ func studentProgressHandler(w http.ResponseWriter, r *http.Request) {
 
 // taskStatsHandler shows completion statistics for group/cohort tasks
 func taskStatsHandler(w http.ResponseWriter, r *http.Request) {
-// instructorsHandler displays list of instructors for instructors to manage
-func instructorsHandler(w http.ResponseWriter, r *http.Request) {
 	session, err := getSession(r)
 	if err != nil {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -656,7 +654,6 @@ func instructorsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Only instructors can view task statistics
-	// Only instructors can access this page
 	if user.Role != "instructor" {
 		http.Error(w, "Unauthorized", http.StatusForbidden)
 		return
@@ -679,7 +676,7 @@ func instructorsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := db.Query(`
-		SELECT 
+		SELECT
 			t.title,
 			COALESCE(t.description, '') as description,
 			COALESCE(t.due_date, '') as due_date,
@@ -698,10 +695,6 @@ func instructorsHandler(w http.ResponseWriter, r *http.Request) {
 		GROUP BY t.title, t.created_by, COALESCE(t.cohort_id, '')
 		HAVING COUNT(*) > 1
 		ORDER BY created_at DESC
-	// Get all instructors
-	rows, err := db.Query(`
-		SELECT id, username
-		FROM users WHERE role = 'instructor' ORDER BY username
 	`)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -732,6 +725,37 @@ func instructorsHandler(w http.ResponseWriter, r *http.Request) {
 
 	templates.ExecuteTemplate(w, "task_stats.html", data)
 }
+
+// instructorsHandler displays list of instructors for instructors to manage
+func instructorsHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can access this page
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	// Get all instructors
+	rows, err := db.Query(`
+		SELECT id, username
+		FROM users WHERE role = 'instructor' ORDER BY username
+	`)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
 
 	var instructors []User
 	for rows.Next() {
@@ -876,20 +900,20 @@ func updateTaskStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Manage date fields based on status change
 	now := time.Now()
-	
+
 	// Check what needs to be updated based on status transition
 	if task.Status == "completed" && newStatus != "completed" {
 		// Clear done_date when moving out of completed
 		if newStatus == "in_progress" && !inProgressDate.Valid {
 			// Also set in_progress_date if moving to in_progress for first time
 			_, err = db.Exec(`
-				UPDATE tasks 
+				UPDATE tasks
 				SET status = ?, done_date = NULL, in_progress_date = ?
 				WHERE id = ?
 			`, newStatus, now, taskID)
 		} else {
 			_, err = db.Exec(`
-				UPDATE tasks 
+				UPDATE tasks
 				SET status = ?, done_date = NULL
 				WHERE id = ?
 			`, newStatus, taskID)
@@ -897,21 +921,21 @@ func updateTaskStatusHandler(w http.ResponseWriter, r *http.Request) {
 	} else if newStatus == "completed" {
 		// Set done_date when moving to completed
 		_, err = db.Exec(`
-			UPDATE tasks 
+			UPDATE tasks
 			SET status = ?, done_date = ?
 			WHERE id = ?
 		`, newStatus, now, taskID)
 	} else if newStatus == "in_progress" && !inProgressDate.Valid {
 		// Set in_progress_date when moving to in_progress for the first time
 		_, err = db.Exec(`
-			UPDATE tasks 
+			UPDATE tasks
 			SET status = ?, in_progress_date = ?
 			WHERE id = ?
 		`, newStatus, now, taskID)
 	} else {
 		// Just update status
 		_, err = db.Exec(`
-			UPDATE tasks 
+			UPDATE tasks
 			SET status = ?
 			WHERE id = ?
 		`, newStatus, taskID)
@@ -1285,7 +1309,7 @@ func editTaskHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err = db.Exec(`
-		UPDATE tasks 
+		UPDATE tasks
 		SET title = ?, description = ?, due_date = ?, status = ?, task_type = ?, resource_url = ?
 		WHERE id = ?
 	`, title, description, dueDate, status, taskType, resourceURL, taskID)
@@ -1317,9 +1341,9 @@ func deleteTaskHandler(w http.ResponseWriter, r *http.Request) {
 	var task Task
 	var creatorRole string
 	err = db.QueryRow(`
-		SELECT t.owner_id, t.created_by, u.role 
-		FROM tasks t 
-		JOIN users u ON t.created_by = u.id 
+		SELECT t.owner_id, t.created_by, u.role
+		FROM tasks t
+		JOIN users u ON t.created_by = u.id
 		WHERE t.id = ?
 	`, taskID).Scan(&task.OwnerID, &task.CreatedBy, &creatorRole)
 
@@ -1389,7 +1413,7 @@ func getTasks(user User) ([]Task, error) {
 			SELECT id, title, description, due_date, status, owner_id, created_by, created_at,
 			       COALESCE(task_type, ''), COALESCE(resource_url, ''), COALESCE(cohort_id, ''),
 			       in_progress_date, done_date
-			FROM tasks 
+			FROM tasks
 			WHERE created_by = ? AND owner_id = ?
 			ORDER BY created_at DESC
 		`, user.ID, user.ID)
@@ -1399,7 +1423,7 @@ func getTasks(user User) ([]Task, error) {
 			SELECT id, title, description, due_date, status, owner_id, created_by, created_at,
 			       COALESCE(task_type, ''), COALESCE(resource_url, ''), COALESCE(cohort_id, ''),
 			       in_progress_date, done_date
-			FROM tasks 
+			FROM tasks
 			WHERE owner_id = ?
 			ORDER BY created_at DESC
 		`, user.ID)
