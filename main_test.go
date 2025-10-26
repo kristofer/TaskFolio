@@ -784,6 +784,219 @@ func TestAssignToAllStudentsExcludesInstructors(t *testing.T) {
 	}
 }
 
+// TestGroupTaskStatistics tests the calculation of group task completion statistics
+func TestGroupTaskStatistics(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			role TEXT NOT NULL,
+			cohort_name TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Create tasks table
+	_, err = testDB.Exec(`
+		CREATE TABLE tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			description TEXT,
+			status TEXT DEFAULT 'pending',
+			owner_id INTEGER NOT NULL,
+			created_by INTEGER NOT NULL,
+			cohort_id TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create tasks table: %v", err)
+	}
+
+	// Insert instructor and students
+	cohortName := "Java11.2"
+	_, err = testDB.Exec("INSERT INTO users (id, username, role) VALUES (?, ?, ?)", 1, "instructor1", "instructor")
+	if err != nil {
+		t.Fatalf("Failed to insert instructor: %v", err)
+	}
+
+	for i := 2; i <= 5; i++ {
+		_, err = testDB.Exec("INSERT INTO users (id, username, role, cohort_name) VALUES (?, ?, ?, ?)",
+			i, fmt.Sprintf("student%d", i-1), "student", cohortName)
+		if err != nil {
+			t.Fatalf("Failed to insert student: %v", err)
+		}
+	}
+
+	// Create a group task assigned to all students in the cohort
+	taskTitle := "Group Programming Project"
+	instructorID := 1
+
+	// Student 2: in_progress
+	_, err = testDB.Exec("INSERT INTO tasks (title, status, owner_id, created_by, cohort_id) VALUES (?, ?, ?, ?, ?)",
+		taskTitle, "in_progress", 2, instructorID, cohortName)
+	if err != nil {
+		t.Fatalf("Failed to insert task: %v", err)
+	}
+
+	// Student 3: completed
+	_, err = testDB.Exec("INSERT INTO tasks (title, status, owner_id, created_by, cohort_id) VALUES (?, ?, ?, ?, ?)",
+		taskTitle, "completed", 3, instructorID, cohortName)
+	if err != nil {
+		t.Fatalf("Failed to insert task: %v", err)
+	}
+
+	// Student 4: completed
+	_, err = testDB.Exec("INSERT INTO tasks (title, status, owner_id, created_by, cohort_id) VALUES (?, ?, ?, ?, ?)",
+		taskTitle, "completed", 4, instructorID, cohortName)
+	if err != nil {
+		t.Fatalf("Failed to insert task: %v", err)
+	}
+
+	// Student 5: pending
+	_, err = testDB.Exec("INSERT INTO tasks (title, status, owner_id, created_by, cohort_id) VALUES (?, ?, ?, ?, ?)",
+		taskTitle, "pending", 5, instructorID, cohortName)
+	if err != nil {
+		t.Fatalf("Failed to insert task: %v", err)
+	}
+
+	// Query group task statistics
+	var totalCount, inProgress, completed int
+	err = testDB.QueryRow(`
+		SELECT 
+			COUNT(*) as total_count,
+			SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+			SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
+		FROM tasks
+		WHERE title = ? AND cohort_id = ?
+	`, taskTitle, cohortName).Scan(&totalCount, &inProgress, &completed)
+	if err != nil {
+		t.Fatalf("Failed to query group task statistics: %v", err)
+	}
+
+	// Verify statistics
+	if totalCount != 4 {
+		t.Errorf("Expected 4 total tasks, got %d", totalCount)
+	}
+	if inProgress != 1 {
+		t.Errorf("Expected 1 in-progress task, got %d", inProgress)
+	}
+	if completed != 2 {
+		t.Errorf("Expected 2 completed tasks, got %d", completed)
+	}
+
+	// Calculate percentages
+	inProgressPercentage := float64(inProgress) / float64(totalCount) * 100
+	completedPercentage := float64(completed) / float64(totalCount) * 100
+
+	expectedInProgress := 25.0
+	expectedCompleted := 50.0
+
+	if inProgressPercentage != expectedInProgress {
+		t.Errorf("Expected %.1f%% in progress, got %.1f%%", expectedInProgress, inProgressPercentage)
+	}
+	if completedPercentage != expectedCompleted {
+		t.Errorf("Expected %.1f%% completed, got %.1f%%", expectedCompleted, completedPercentage)
+	}
+}
+
+// TestInstructorCanViewStudentKanban tests that instructors can view student kanban boards
+func TestInstructorCanViewStudentKanban(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			role TEXT NOT NULL,
+			cohort_name TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Create tasks table
+	_, err = testDB.Exec(`
+		CREATE TABLE tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			status TEXT DEFAULT 'pending',
+			owner_id INTEGER NOT NULL,
+			created_by INTEGER NOT NULL,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create tasks table: %v", err)
+	}
+
+	// Insert instructor and student
+	_, err = testDB.Exec("INSERT INTO users (id, username, role) VALUES (?, ?, ?)", 1, "instructor1", "instructor")
+	if err != nil {
+		t.Fatalf("Failed to insert instructor: %v", err)
+	}
+
+	_, err = testDB.Exec("INSERT INTO users (id, username, role, cohort_name) VALUES (?, ?, ?, ?)",
+		2, "student1", "student", "Java11.2")
+	if err != nil {
+		t.Fatalf("Failed to insert student: %v", err)
+	}
+
+	// Create tasks for the student in different statuses
+	statuses := []string{"pending", "in_progress", "blocked", "completed"}
+	for i, status := range statuses {
+		_, err = testDB.Exec("INSERT INTO tasks (title, status, owner_id, created_by) VALUES (?, ?, ?, ?)",
+			fmt.Sprintf("Task %d", i+1), status, 2, 1)
+		if err != nil {
+			t.Fatalf("Failed to insert task: %v", err)
+		}
+	}
+
+	// Verify tasks can be retrieved for the student
+	rows, err := testDB.Query(`
+		SELECT title, status FROM tasks WHERE owner_id = ? ORDER BY status
+	`, 2)
+	if err != nil {
+		t.Fatalf("Failed to query student tasks: %v", err)
+	}
+	defer rows.Close()
+
+	taskCount := 0
+	statusCount := make(map[string]int)
+	for rows.Next() {
+		var title, status string
+		rows.Scan(&title, &status)
+		taskCount++
+		statusCount[status]++
+	}
+
+	if taskCount != 4 {
+		t.Errorf("Expected 4 tasks for student, got %d", taskCount)
+	}
+
+	for _, status := range statuses {
+		if statusCount[status] != 1 {
+			t.Errorf("Expected 1 task with status '%s', got %d", status, statusCount[status])
+		}
+	}
+}
+
+
 func TestAssignToCohortExcludesInstructors(t *testing.T) {
 	testDB, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {

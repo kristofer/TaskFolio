@@ -639,6 +639,94 @@ func studentProgressHandler(w http.ResponseWriter, r *http.Request) {
 	templates.ExecuteTemplate(w, "student_progress.html", data)
 }
 
+// taskStatsHandler shows completion statistics for group/cohort tasks
+func taskStatsHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can view task statistics
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	// Get all unique group tasks (tasks created by instructors that were assigned to multiple students)
+	// We identify these by looking at tasks with the same title, created_by, and cohort_id
+	type GroupTask struct {
+		Title       string
+		Description string
+		DueDate     string
+		TaskType    string
+		ResourceURL string
+		CreatedBy   int
+		CohortID    string
+		CreatedAt   time.Time
+		TotalCount  int
+		InProgress  int
+		Completed   int
+	}
+
+	rows, err := db.Query(`
+		SELECT 
+			t.title,
+			t.description,
+			t.due_date,
+			COALESCE(t.task_type, '') as task_type,
+			COALESCE(t.resource_url, '') as resource_url,
+			t.created_by,
+			COALESCE(t.cohort_id, '') as cohort_id,
+			MIN(t.created_at) as created_at,
+			COUNT(*) as total_count,
+			SUM(CASE WHEN t.status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+			SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as completed
+		FROM tasks t
+		JOIN users u ON t.owner_id = u.id
+		WHERE t.created_by IN (SELECT id FROM users WHERE role = 'instructor')
+		AND u.role = 'student'
+		GROUP BY t.title, t.created_by, COALESCE(t.cohort_id, '')
+		HAVING COUNT(*) > 1
+		ORDER BY created_at DESC
+	`)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var groupTasks []GroupTask
+	for rows.Next() {
+		var gt GroupTask
+		err := rows.Scan(&gt.Title, &gt.Description, &gt.DueDate, &gt.TaskType,
+			&gt.ResourceURL, &gt.CreatedBy, &gt.CohortID, &gt.CreatedAt,
+			&gt.TotalCount, &gt.InProgress, &gt.Completed)
+		if err != nil {
+			log.Printf("Error scanning group task: %v", err)
+			continue
+		}
+		groupTasks = append(groupTasks, gt)
+	}
+
+	data := struct {
+		User       User
+		GroupTasks []GroupTask
+	}{
+		User:       user,
+		GroupTasks: groupTasks,
+	}
+
+	templates.ExecuteTemplate(w, "task_stats.html", data)
+}
+
+
 // updateTaskStatusHandler handles AJAX requests to update task status
 func updateTaskStatusHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
@@ -750,8 +838,17 @@ func main() {
 	}
 	defer db.Close()
 
-	// Load templates
-	templates = template.Must(template.ParseGlob("templates/*.html"))
+	// Load templates with custom functions
+	funcMap := template.FuncMap{
+		"mul": func(a, b float64) float64 { return a * b },
+		"div": func(a, b float64) float64 {
+			if b == 0 {
+				return 0
+			}
+			return a / b
+		},
+	}
+	templates = template.Must(template.New("").Funcs(funcMap).ParseGlob("templates/*.html"))
 
 	// Setup routes
 	http.HandleFunc("/", homeHandler)
@@ -766,6 +863,7 @@ func main() {
 	http.HandleFunc("/students/add", addStudentHandler)
 	http.HandleFunc("/students/edit", editStudentHandler)
 	http.HandleFunc("/students/progress", studentProgressHandler)
+	http.HandleFunc("/tasks/stats", taskStatsHandler)
 
 	port := os.Getenv("PORT")
 	if port == "" {
