@@ -231,7 +231,7 @@
                     {{if .DueDate}}
                     <div class="task-stat-meta-item">📅 Due: {{.DueDate}}</div>
                     {{end}}
-                    <div class="task-stat-meta-item">🕐 Created: {{.CreatedAt}}</div>
+                    <div class="task-stat-meta-item">🕐 Created: {{formatDate .CreatedAt}}</div>
                     {{if .TaskType}}
                     <div class="task-stat-meta-item">🏷️ Type: {{.TaskType}}</div>
                     {{end}}

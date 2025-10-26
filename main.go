@@ -847,6 +847,18 @@ func main() {
 			}
 			return a / b
 		},
+		"formatDate": func(dateStr string) string {
+			// Parse SQLite timestamp format and convert to friendly format
+			t, err := time.Parse("2006-01-02 15:04:05", dateStr)
+			if err != nil {
+				// Try alternate format
+				t, err = time.Parse(time.RFC3339, dateStr)
+				if err != nil {
+					return dateStr // Return as-is if parsing fails
+				}
+			}
+			return t.Format("Jan 2, 2006")
+		},
 	}
 	templates = template.Must(template.New("").Funcs(funcMap).ParseGlob("templates/*.html"))
 
