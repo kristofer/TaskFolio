@@ -130,7 +130,10 @@
     <div class="container">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <h2>Students</h2>
-            <a href="/students/add" class="btn btn-primary">+ Add New Student</a>
+            <div style="display: flex; gap: 10px;">
+                <a href="/instructors" class="btn btn-primary">Manage Instructors</a>
+                <a href="/students/add" class="btn btn-primary">+ Add New Student</a>
+            </div>
         </div>
         
         {{if .Students}}

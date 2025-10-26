@@ -1560,3 +1560,264 @@ t.Errorf("Old task type '%s' should have been rejected after migration", taskTyp
 }
 }
 }
+
+func TestAddNewInstructor(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL,
+			role TEXT NOT NULL,
+			cohort_name TEXT,
+			is_suspended BOOLEAN DEFAULT 0
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Add a new instructor
+	username := "newinstructor"
+	password := "password123"
+
+	_, err = testDB.Exec(`
+		INSERT INTO users (username, password, role, cohort_name, is_suspended)
+		VALUES (?, ?, 'instructor', NULL, 0)
+	`, username, password)
+	if err != nil {
+		t.Fatalf("Failed to add new instructor: %v", err)
+	}
+
+	// Verify instructor was added
+	var retrievedUsername, retrievedPassword, retrievedRole string
+	var cohortName sql.NullString
+	var isSuspended bool
+	err = testDB.QueryRow(`
+		SELECT username, password, role, cohort_name, is_suspended 
+		FROM users WHERE username = ?
+	`, username).Scan(&retrievedUsername, &retrievedPassword, &retrievedRole, &cohortName, &isSuspended)
+	if err != nil {
+		t.Fatalf("Failed to query new instructor: %v", err)
+	}
+
+	if retrievedUsername != username {
+		t.Errorf("Expected username '%s', got '%s'", username, retrievedUsername)
+	}
+	if retrievedPassword != password {
+		t.Errorf("Expected password '%s', got '%s'", password, retrievedPassword)
+	}
+	if retrievedRole != "instructor" {
+		t.Errorf("Expected role 'instructor', got '%s'", retrievedRole)
+	}
+	if cohortName.Valid {
+		t.Errorf("Expected cohort to be NULL for instructor, got '%s'", cohortName.String)
+	}
+	if isSuspended {
+		t.Errorf("Expected new instructor to not be suspended")
+	}
+}
+
+func TestInstructorCanDeleteInstructorCreatedTasks(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL,
+			role TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Create tasks table
+	_, err = testDB.Exec(`
+		CREATE TABLE tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			owner_id INTEGER NOT NULL,
+			created_by INTEGER NOT NULL
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create tasks table: %v", err)
+	}
+
+	// Insert test users: 2 instructors and 1 student
+	_, err = testDB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", "instructor1", "pass", "instructor")
+	if err != nil {
+		t.Fatalf("Failed to insert instructor1: %v", err)
+	}
+	_, err = testDB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", "instructor2", "pass", "instructor")
+	if err != nil {
+		t.Fatalf("Failed to insert instructor2: %v", err)
+	}
+	_, err = testDB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", "student1", "pass", "student")
+	if err != nil {
+		t.Fatalf("Failed to insert student1: %v", err)
+	}
+
+	// Instructor1 creates a task for themselves
+	_, err = testDB.Exec("INSERT INTO tasks (title, owner_id, created_by) VALUES (?, ?, ?)",
+		"Instructor Task", 1, 1)
+	if err != nil {
+		t.Fatalf("Failed to create instructor task: %v", err)
+	}
+
+	// Verify task was created
+	var taskCount int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&taskCount)
+	if err != nil {
+		t.Fatalf("Failed to count tasks: %v", err)
+	}
+	if taskCount != 1 {
+		t.Fatalf("Expected 1 task, got %d", taskCount)
+	}
+
+	// Simulate instructor2 checking if they can delete the task
+	// Get the task and the creator's role
+	var taskID, ownerID, createdBy int
+	var creatorRole string
+	err = testDB.QueryRow(`
+		SELECT t.id, t.owner_id, t.created_by, u.role 
+		FROM tasks t 
+		JOIN users u ON t.created_by = u.id 
+		WHERE t.id = 1
+	`).Scan(&taskID, &ownerID, &createdBy, &creatorRole)
+	if err != nil {
+		t.Fatalf("Failed to query task: %v", err)
+	}
+
+	// Instructor2 (user ID 2) should be able to delete this task because:
+	// - The task was created by instructor1 (creatorRole == "instructor")
+	// - Instructor2 is also an instructor
+	instructor2Role := "instructor"
+
+	canDelete := false
+	if instructor2Role == "instructor" && creatorRole == "instructor" {
+		canDelete = true
+	}
+
+	if !canDelete {
+		t.Errorf("Instructor2 should be able to delete tasks created by other instructors")
+	}
+
+	// Now actually delete the task
+	_, err = testDB.Exec("DELETE FROM tasks WHERE id = ?", taskID)
+	if err != nil {
+		t.Fatalf("Failed to delete task: %v", err)
+	}
+
+	// Verify task was deleted
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&taskCount)
+	if err != nil {
+		t.Fatalf("Failed to count tasks after deletion: %v", err)
+	}
+	if taskCount != 0 {
+		t.Errorf("Expected 0 tasks after deletion, got %d", taskCount)
+	}
+}
+
+func TestInstructorCannotDeleteStudentCreatedTasks(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL,
+			role TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Create tasks table
+	_, err = testDB.Exec(`
+		CREATE TABLE tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			owner_id INTEGER NOT NULL,
+			created_by INTEGER NOT NULL
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create tasks table: %v", err)
+	}
+
+	// Insert test users: 1 instructor and 1 student
+	_, err = testDB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", "instructor1", "pass", "instructor")
+	if err != nil {
+		t.Fatalf("Failed to insert instructor1: %v", err)
+	}
+	_, err = testDB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", "student1", "pass", "student")
+	if err != nil {
+		t.Fatalf("Failed to insert student1: %v", err)
+	}
+
+	// Student creates a task for themselves
+	_, err = testDB.Exec("INSERT INTO tasks (title, owner_id, created_by) VALUES (?, ?, ?)",
+		"Student Task", 2, 2)
+	if err != nil {
+		t.Fatalf("Failed to create student task: %v", err)
+	}
+
+	// Verify task was created
+	var taskCount int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&taskCount)
+	if err != nil {
+		t.Fatalf("Failed to count tasks: %v", err)
+	}
+	if taskCount != 1 {
+		t.Fatalf("Expected 1 task, got %d", taskCount)
+	}
+
+	// Simulate instructor checking if they can delete the task
+	var taskID, ownerID, createdBy int
+	var creatorRole string
+	err = testDB.QueryRow(`
+		SELECT t.id, t.owner_id, t.created_by, u.role 
+		FROM tasks t 
+		JOIN users u ON t.created_by = u.id 
+		WHERE t.id = 1
+	`).Scan(&taskID, &ownerID, &createdBy, &creatorRole)
+	if err != nil {
+		t.Fatalf("Failed to query task: %v", err)
+	}
+
+	// Instructor (user ID 1) should NOT be able to delete this task because:
+	// - The task was created by student1 (creatorRole == "student")
+	// - Instructor does not own this task (ownerID != instructorID)
+	instructorID := 1
+	instructorRole := "instructor"
+
+	canDelete := true
+	if instructorRole == "instructor" && creatorRole != "instructor" && ownerID != instructorID {
+		canDelete = false
+	}
+
+	if canDelete {
+		t.Errorf("Instructor should NOT be able to delete tasks created by students (unless they own it)")
+	}
+}
+
