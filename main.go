@@ -951,11 +951,11 @@ func taskDetailHandler(w http.ResponseWriter, r *http.Request) {
 	err = db.QueryRow(`
 		SELECT t.title, COALESCE(t.description, ''), COALESCE(t.due_date, ''),
 		       COALESCE(t.task_type, ''), COALESCE(t.resource_url, ''),
-		       t.created_by, u.username, COALESCE(t.cohort_id, ''), MIN(t.created_at)
+		       t.created_by, u.username, COALESCE(t.cohort_id, ''), t.created_at
 		FROM tasks t
 		JOIN users u ON t.created_by = u.id
 		WHERE t.title = ? AND t.created_by = ? AND COALESCE(t.cohort_id, '') = ?
-		GROUP BY t.title, t.description, t.due_date, t.task_type, t.resource_url, t.created_by, u.username, t.cohort_id
+		LIMIT 1
 	`, taskTitle, createdBy, cohortID).Scan(&taskInfo.Title, &taskInfo.Description, &taskInfo.DueDate,
 		&taskInfo.TaskType, &taskInfo.ResourceURL, &taskInfo.CreatedBy, &taskInfo.CreatorName,
 		&taskInfo.CohortID, &taskInfo.CreatedAt)
