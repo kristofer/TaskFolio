@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -582,13 +583,13 @@ func importStudentsHandler(w http.ResponseWriter, r *http.Request) {
 	lineNum := 0
 
 	csvReader := csv.NewReader(file)
-	csvReader.FieldsPerRecord = -1 // Allow variable number of fields
+	csvReader.FieldsPerRecord = -1 // Allow 2-3 fields (username, password, optional cohort)
 	csvReader.TrimLeadingSpace = true
 
 	for {
 		record, err := csvReader.Read()
 		if err != nil {
-			if err.Error() == "EOF" {
+			if err == io.EOF {
 				break
 			}
 			http.Error(w, "Failed to read CSV file", http.StatusBadRequest)
@@ -602,9 +603,9 @@ func importStudentsHandler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Parse CSV line: Username, Password, Cohort
-		if len(record) < 2 {
-			failedImports = append(failedImports, fmt.Sprintf("Line %d: Invalid format (need at least Username, Password)", lineNum))
+		// Validate CSV has expected number of fields (2-3)
+		if len(record) < 2 || len(record) > 3 {
+			failedImports = append(failedImports, fmt.Sprintf("Line %d: Invalid format (expected 2-3 fields: Username, Password, Cohort)", lineNum))
 			continue
 		}
 
