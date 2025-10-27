@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"html"
 	"html/template"
@@ -1249,6 +1250,339 @@ func updateTaskStatusHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"success": true}`))
 }
 
+// importTasksHandler handles bulk import of tasks from CSV file
+func importTasksHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can import tasks
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse multipart form (max 1MB for CSV files)
+	err = r.ParseMultipartForm(1 << 20)
+	if err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	// Get assignment type and targets
+	assignType := r.FormValue("assign_type")
+	if assignType == "" {
+		http.Error(w, "Please select an assignment type", http.StatusBadRequest)
+		return
+	}
+
+	// Get target student IDs based on assignment type
+	var targetStudentIDs []int
+	switch assignType {
+	case "all":
+		rows, err := db.Query("SELECT id FROM users WHERE role = 'student'")
+		if err != nil {
+			http.Error(w, "Failed to query students", http.StatusInternalServerError)
+			return
+		}
+		for rows.Next() {
+			var studentID int
+			rows.Scan(&studentID)
+			targetStudentIDs = append(targetStudentIDs, studentID)
+		}
+		rows.Close()
+	case "cohort":
+		cohortName := r.FormValue("cohort")
+		if cohortName == "" {
+			http.Error(w, "Please select a cohort", http.StatusBadRequest)
+			return
+		}
+		rows, err := db.Query("SELECT id FROM users WHERE role = 'student' AND cohort_name = ?", cohortName)
+		if err != nil {
+			http.Error(w, "Failed to query cohort students", http.StatusInternalServerError)
+			return
+		}
+		for rows.Next() {
+			var studentID int
+			rows.Scan(&studentID)
+			targetStudentIDs = append(targetStudentIDs, studentID)
+		}
+		rows.Close()
+	case "students":
+		// Form data already parsed by ParseMultipartForm above
+		studentIDs := r.Form["students"]
+		if len(studentIDs) == 0 {
+			http.Error(w, "Please select at least one student", http.StatusBadRequest)
+			return
+		}
+		for _, idStr := range studentIDs {
+			id, err := strconv.Atoi(idStr)
+			if err == nil {
+				targetStudentIDs = append(targetStudentIDs, id)
+			}
+		}
+	default:
+		http.Error(w, "Invalid assignment type", http.StatusBadRequest)
+		return
+	}
+
+	if len(targetStudentIDs) == 0 {
+		http.Error(w, "No students found for assignment", http.StatusBadRequest)
+		return
+	}
+
+	file, _, err := r.FormFile("csvfile")
+	if err != nil {
+		http.Error(w, "Failed to read file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Read and parse CSV using encoding/csv for proper CSV handling
+	var importedTasks []string
+	var failedImports []string
+	lineNum := 0
+	tasksCreated := 0
+
+	csvReader := csv.NewReader(file)
+	csvReader.FieldsPerRecord = -1 // Allow variable fields (5 expected)
+	csvReader.TrimLeadingSpace = true
+
+	for {
+		record, err := csvReader.Read()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			http.Error(w, "Failed to read CSV file", http.StatusBadRequest)
+			return
+		}
+
+		lineNum++
+
+		// Skip empty lines
+		if len(record) == 0 || (len(record) == 1 && strings.TrimSpace(record[0]) == "") {
+			continue
+		}
+
+		// Validate CSV has expected number of fields (5)
+		if len(record) != 5 {
+			failedImports = append(failedImports, fmt.Sprintf("Line %d: Invalid format (expected 5 fields: Task Title, Description, DueDate, TaskType, ResourceURL)", lineNum))
+			continue
+		}
+
+		title := strings.TrimSpace(record[0])
+		description := strings.TrimSpace(record[1])
+		dueDate := strings.TrimSpace(record[2])
+		taskType := strings.TrimSpace(record[3])
+		resourceURL := strings.TrimSpace(record[4])
+
+		if title == "" {
+			failedImports = append(failedImports, fmt.Sprintf("Line %d: Task title is required", lineNum))
+			continue
+		}
+
+		// Validate task type if provided
+		validTaskTypes := map[string]bool{
+			"group-programming-project": true,
+			"individual-programming-lab": true,
+			"reading":                    true,
+			"document":                   true,
+			"resume":                     true,
+			"prodev":                     true,
+			"":                           true, // Empty is allowed
+		}
+		if !validTaskTypes[taskType] {
+			failedImports = append(failedImports, fmt.Sprintf("Line %d: Invalid task type '%s'", lineNum, taskType))
+			continue
+		}
+
+		// Create task for each target student
+		cohortID := ""
+		if assignType == "cohort" {
+			cohortID = r.FormValue("cohort")
+		}
+
+		taskSuccessCount := 0
+		for _, studentID := range targetStudentIDs {
+			_, err = db.Exec(`
+				INSERT INTO tasks (title, description, due_date, owner_id, created_by, task_type, resource_url, cohort_id)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			`, title, description, dueDate, studentID, user.ID, taskType, resourceURL, cohortID)
+
+			if err != nil {
+				log.Printf("Failed to create task '%s' for student %d: %v", title, studentID, err)
+			} else {
+				tasksCreated++
+				taskSuccessCount++
+			}
+		}
+
+		// Only add to imported list if at least one instance was created successfully
+		if taskSuccessCount > 0 {
+			importedTasks = append(importedTasks, title)
+		}
+	}
+
+	// Generate report
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html>
+<head>
+    <title>Import Results - Tasking</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f5f7fa; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h1 { color: #2C5F7C; }
+        .success { color: #065f46; background: #d1fae5; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        .error { color: #991b1b; background: #fee2e2; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        .list { margin: 10px 0; padding-left: 20px; }
+        .btn { 
+            display: inline-block;
+            padding: 10px 20px; 
+            background: #667eea; 
+            color: white; 
+            text-decoration: none; 
+            border-radius: 5px; 
+            margin-top: 20px;
+        }
+        .btn:hover { opacity: 0.9; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Task Import Results</h1>
+`)
+
+	if len(importedTasks) > 0 {
+		fmt.Fprintf(w, `<div class="success">
+            <h2>Successfully Imported: %d task(s) assigned to %d student(s)</h2>
+            <p><strong>Total tasks created:</strong> %d</p>
+            <h3>Tasks imported:</h3>
+            <ul class="list">`, len(importedTasks), len(targetStudentIDs), tasksCreated)
+		for _, taskTitle := range importedTasks {
+			fmt.Fprintf(w, "<li>%s</li>", html.EscapeString(taskTitle))
+		}
+		fmt.Fprintf(w, "</ul></div>")
+	}
+
+	if len(failedImports) > 0 {
+		fmt.Fprintf(w, `<div class="error">
+            <h2>Failed Imports: %d</h2>
+            <ul class="list">`, len(failedImports))
+		for _, failure := range failedImports {
+			fmt.Fprintf(w, "<li>%s</li>", html.EscapeString(failure))
+		}
+		fmt.Fprintf(w, "</ul></div>")
+	}
+
+	if len(importedTasks) == 0 && len(failedImports) == 0 {
+		fmt.Fprintf(w, `<div class="error">No tasks were imported. Please check your CSV file format.</div>`)
+	}
+
+	fmt.Fprintf(w, `
+        <a href="/" class="btn">← Back to Tasks</a>
+    </div>
+</body>
+</html>`)
+}
+
+// apiCohortsHandler returns list of unique cohorts as JSON
+func apiCohortsHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil || user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	rows, err := db.Query(`
+		SELECT DISTINCT cohort_name 
+		FROM users 
+		WHERE role = 'student' AND cohort_name IS NOT NULL AND cohort_name != '' 
+		ORDER BY cohort_name
+	`)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var cohorts []string
+	for rows.Next() {
+		var cohort string
+		rows.Scan(&cohort)
+		cohorts = append(cohorts, cohort)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(cohorts); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// apiStudentsHandler returns list of students as JSON
+func apiStudentsHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil || user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	rows, err := db.Query(`
+		SELECT id, username, COALESCE(cohort_name, '') 
+		FROM users 
+		WHERE role = 'student' 
+		ORDER BY username
+	`)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var students []map[string]interface{}
+	for rows.Next() {
+		var id int
+		var username, cohort string
+		rows.Scan(&id, &username, &cohort)
+		students = append(students, map[string]interface{}{
+			"id":       id,
+			"username": username,
+			"cohort":   cohort,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(students); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
 func main() {
 	if err := initDB(); err != nil {
 		log.Fatal("Failed to initialize database:", err)
@@ -1301,6 +1635,7 @@ func main() {
 	http.HandleFunc("/tasks/edit", editTaskHandler)
 	http.HandleFunc("/tasks/delete", deleteTaskHandler)
 	http.HandleFunc("/tasks/update-status", updateTaskStatusHandler)
+	http.HandleFunc("/tasks/import", importTasksHandler)
 	http.HandleFunc("/students", studentsHandler)
 	http.HandleFunc("/students/add", addStudentHandler)
 	http.HandleFunc("/students/import", importStudentsHandler)
@@ -1310,6 +1645,8 @@ func main() {
 	http.HandleFunc("/tasks/detail", taskDetailHandler)
 	http.HandleFunc("/instructors", instructorsHandler)
 	http.HandleFunc("/instructors/add", addInstructorHandler)
+	http.HandleFunc("/api/cohorts", apiCohortsHandler)
+	http.HandleFunc("/api/students", apiStudentsHandler)
 
 	port := os.Getenv("PORT")
 	if port == "" {
