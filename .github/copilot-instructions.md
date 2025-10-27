@@ -12,6 +12,17 @@ TaskFolio (branded as "Tasking" for end users) is a multi-tenant web-based task 
 - **Status Tracking**: Tasks can be pending, in_progress, completed, or blocked with automatic date tracking
 - **Account Management**: User suspension capability and role-based access control
 
+## ⚠️ Important Security Notice
+
+**This is a demo/educational application.** It contains known security limitations that make it unsuitable for production use without significant security enhancements:
+
+- **Plain text passwords** (should use bcrypt hashing)
+- **No CSRF protection**
+- **Basic in-memory session management** (no expiration)
+- **No rate limiting**
+
+These limitations are intentional for learning purposes but must be addressed before any production deployment. See the [Security Considerations](#security-considerations) section for details.
+
 ## Technology Stack
 
 - **Language**: Go 1.24.7
@@ -34,7 +45,7 @@ TaskFolio (branded as "Tasking" for end users) is a multi-tenant web-based task 
 #### Users Table
 - `id`: Auto-increment primary key
 - `username`: Unique username
-- `password`: Plain text password (note: demo only, should be hashed in production)
+- `password`: Plain text password ⚠️ **SECURITY WARNING: This is for demo/educational purposes only. NOT suitable for production use. Should use bcrypt or similar hashing.**
 - `role`: Either "student" or "instructor"
 - `cohort_name`: Optional cohort assignment (e.g., "Java11.2")
 - `is_suspended`: Boolean for account suspension
