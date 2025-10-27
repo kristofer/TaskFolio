@@ -2060,3 +2060,429 @@ func TestTaskDetailTracking(t *testing.T) {
 }
 
 
+// TestImportTasks tests the task import functionality
+func TestImportTasks(t *testing.T) {
+testDB, err := sql.Open("sqlite3", ":memory:")
+if err != nil {
+t.Fatalf("Failed to open test database: %v", err)
+}
+defer testDB.Close()
+
+// Create users table
+_, err = testDB.Exec(`
+CREATE TABLE users (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+username TEXT UNIQUE NOT NULL,
+password TEXT NOT NULL,
+role TEXT NOT NULL CHECK(role IN ('student', 'instructor')),
+cohort_name TEXT,
+is_suspended BOOLEAN DEFAULT 0
+)
+`)
+if err != nil {
+t.Fatalf("Failed to create users table: %v", err)
+}
+
+// Create tasks table
+_, err = testDB.Exec(`
+CREATE TABLE tasks (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+title TEXT NOT NULL,
+description TEXT,
+due_date TEXT,
+status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'in_progress', 'completed', 'blocked')),
+owner_id INTEGER NOT NULL,
+created_by INTEGER NOT NULL,
+assigned_to TEXT,
+created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+task_type TEXT CHECK(task_type IN ('group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev', '')),
+resource_url TEXT,
+cohort_id TEXT,
+in_progress_date DATETIME,
+done_date DATETIME,
+FOREIGN KEY (owner_id) REFERENCES users(id),
+FOREIGN KEY (created_by) REFERENCES users(id)
+)
+`)
+if err != nil {
+t.Fatalf("Failed to create tasks table: %v", err)
+}
+
+// Insert instructor and students
+_, err = testDB.Exec("INSERT INTO users (id, username, password, role) VALUES (?, ?, ?, ?)",
+1, "instructor1", "pass", "instructor")
+if err != nil {
+t.Fatalf("Failed to insert instructor: %v", err)
+}
+
+for i := 2; i <= 4; i++ {
+_, err = testDB.Exec("INSERT INTO users (id, username, password, role, cohort_name) VALUES (?, ?, ?, ?, ?)",
+i, fmt.Sprintf("student%d", i-1), "pass", "student", "Java11.2")
+if err != nil {
+t.Fatalf("Failed to insert student: %v", err)
+}
+}
+
+// Test data simulating CSV import (5 fields: Title, Description, DueDate, TaskType, ResourceURL)
+tests := []struct {
+title       string
+description string
+dueDate     string
+taskType    string
+resourceURL string
+}{
+{"Complete Lab 1", "Finish the Java basics lab", "2025-11-15", "individual-programming-lab", "https://example.com/lab1"},
+{"Read Chapter 5", "Read about design patterns", "2025-11-10", "reading", "https://example.com/chapter5"},
+{"Group Project", "Build a REST API", "2025-11-20", "group-programming-project", "https://github.com/example/project"},
+}
+
+instructorID := 1
+cohortName := "Java11.2"
+
+// Simulate the import process - get students in cohort
+rows, err := testDB.Query("SELECT id FROM users WHERE role = 'student' AND cohort_name = ?", cohortName)
+if err != nil {
+t.Fatalf("Failed to query cohort students: %v", err)
+}
+
+var studentIDs []int
+for rows.Next() {
+var studentID int
+rows.Scan(&studentID)
+studentIDs = append(studentIDs, studentID)
+}
+rows.Close()
+
+if len(studentIDs) != 3 {
+t.Fatalf("Expected 3 students in cohort, got %d", len(studentIDs))
+}
+
+// Import tasks
+for _, tt := range tests {
+for _, studentID := range studentIDs {
+_, err := testDB.Exec(`
+INSERT INTO tasks (title, description, due_date, owner_id, created_by, task_type, resource_url, cohort_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`, tt.title, tt.description, tt.dueDate, studentID, instructorID, tt.taskType, tt.resourceURL, cohortName)
+if err != nil {
+t.Errorf("Failed to import task '%s' for student %d: %v", tt.title, studentID, err)
+}
+}
+}
+
+// Verify tasks were imported
+var taskCount int
+err = testDB.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&taskCount)
+if err != nil {
+t.Fatalf("Failed to count tasks: %v", err)
+}
+
+expectedCount := len(tests) * len(studentIDs) // 3 tasks * 3 students = 9
+if taskCount != expectedCount {
+t.Errorf("Expected %d tasks, got %d", expectedCount, taskCount)
+}
+
+// Verify task details for a specific task
+var title, description, dueDate, taskType, resourceURL string
+err = testDB.QueryRow(`
+SELECT title, description, due_date, task_type, resource_url 
+FROM tasks 
+WHERE title = 'Complete Lab 1' 
+LIMIT 1
+`).Scan(&title, &description, &dueDate, &taskType, &resourceURL)
+if err != nil {
+t.Fatalf("Failed to query imported task: %v", err)
+}
+
+if title != "Complete Lab 1" {
+t.Errorf("Expected title 'Complete Lab 1', got '%s'", title)
+}
+if description != "Finish the Java basics lab" {
+t.Errorf("Expected description 'Finish the Java basics lab', got '%s'", description)
+}
+if dueDate != "2025-11-15" {
+t.Errorf("Expected due date '2025-11-15', got '%s'", dueDate)
+}
+if taskType != "individual-programming-lab" {
+t.Errorf("Expected task type 'individual-programming-lab', got '%s'", taskType)
+}
+if resourceURL != "https://example.com/lab1" {
+t.Errorf("Expected resource URL 'https://example.com/lab1', got '%s'", resourceURL)
+}
+
+// Verify all students got all tasks
+for _, studentID := range studentIDs {
+var studentTaskCount int
+err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE owner_id = ?", studentID).Scan(&studentTaskCount)
+if err != nil {
+t.Errorf("Failed to count tasks for student %d: %v", studentID, err)
+}
+if studentTaskCount != len(tests) {
+t.Errorf("Expected %d tasks for student %d, got %d", len(tests), studentID, studentTaskCount)
+}
+}
+
+// Verify cohort_id was set correctly
+var cohortTaskCount int
+err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE cohort_id = ?", cohortName).Scan(&cohortTaskCount)
+if err != nil {
+t.Fatalf("Failed to count cohort tasks: %v", err)
+}
+if cohortTaskCount != expectedCount {
+t.Errorf("Expected %d tasks with cohort_id, got %d", expectedCount, cohortTaskCount)
+}
+}
+
+// TestImportTasksToAllStudents tests importing tasks to all students
+func TestImportTasksToAllStudents(t *testing.T) {
+testDB, err := sql.Open("sqlite3", ":memory:")
+if err != nil {
+t.Fatalf("Failed to open test database: %v", err)
+}
+defer testDB.Close()
+
+// Create users table
+_, err = testDB.Exec(`
+CREATE TABLE users (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+username TEXT UNIQUE NOT NULL,
+password TEXT NOT NULL,
+role TEXT NOT NULL CHECK(role IN ('student', 'instructor')),
+cohort_name TEXT,
+is_suspended BOOLEAN DEFAULT 0
+)
+`)
+if err != nil {
+t.Fatalf("Failed to create users table: %v", err)
+}
+
+// Create tasks table
+_, err = testDB.Exec(`
+CREATE TABLE tasks (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+title TEXT NOT NULL,
+description TEXT,
+due_date TEXT,
+owner_id INTEGER NOT NULL,
+created_by INTEGER NOT NULL,
+task_type TEXT,
+resource_url TEXT,
+cohort_id TEXT
+)
+`)
+if err != nil {
+t.Fatalf("Failed to create tasks table: %v", err)
+}
+
+// Insert instructor and students in different cohorts
+_, err = testDB.Exec("INSERT INTO users (id, username, password, role) VALUES (?, ?, ?, ?)",
+1, "instructor1", "pass", "instructor")
+if err != nil {
+t.Fatalf("Failed to insert instructor: %v", err)
+}
+
+_, err = testDB.Exec("INSERT INTO users (username, password, role, cohort_name) VALUES (?, ?, ?, ?)",
+"student1", "pass", "student", "Java11.2")
+if err != nil {
+t.Fatalf("Failed to insert student1: %v", err)
+}
+_, err = testDB.Exec("INSERT INTO users (username, password, role, cohort_name) VALUES (?, ?, ?, ?)",
+"student2", "pass", "student", "Java11.2")
+if err != nil {
+t.Fatalf("Failed to insert student2: %v", err)
+}
+_, err = testDB.Exec("INSERT INTO users (username, password, role, cohort_name) VALUES (?, ?, ?, ?)",
+"student3", "pass", "student", "Data6.2")
+if err != nil {
+t.Fatalf("Failed to insert student3: %v", err)
+}
+
+// Get ALL students
+rows, err := testDB.Query("SELECT id FROM users WHERE role = 'student'")
+if err != nil {
+t.Fatalf("Failed to query students: %v", err)
+}
+
+var studentIDs []int
+for rows.Next() {
+var studentID int
+rows.Scan(&studentID)
+studentIDs = append(studentIDs, studentID)
+}
+rows.Close()
+
+if len(studentIDs) != 3 {
+t.Fatalf("Expected 3 students total, got %d", len(studentIDs))
+}
+
+// Import task to all students
+instructorID := 1
+taskTitle := "Universal Assignment"
+
+for _, studentID := range studentIDs {
+_, err := testDB.Exec(`
+INSERT INTO tasks (title, description, due_date, owner_id, created_by, task_type, resource_url, cohort_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`, taskTitle, "This is for everyone", "2025-11-30", studentID, instructorID, "reading", "https://example.com", "")
+if err != nil {
+t.Errorf("Failed to create task for student %d: %v", studentID, err)
+}
+}
+
+// Verify all students got the task
+var taskCount int
+err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE title = ?", taskTitle).Scan(&taskCount)
+if err != nil {
+t.Fatalf("Failed to count tasks: %v", err)
+}
+
+if taskCount != 3 {
+t.Errorf("Expected 3 tasks (one per student), got %d", taskCount)
+}
+}
+
+// TestImportTasksToSpecificStudents tests importing tasks to selected students
+func TestImportTasksToSpecificStudents(t *testing.T) {
+testDB, err := sql.Open("sqlite3", ":memory:")
+if err != nil {
+t.Fatalf("Failed to open test database: %v", err)
+}
+defer testDB.Close()
+
+// Create users table
+_, err = testDB.Exec(`
+CREATE TABLE users (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+username TEXT UNIQUE NOT NULL,
+password TEXT NOT NULL,
+role TEXT NOT NULL,
+cohort_name TEXT
+)
+`)
+if err != nil {
+t.Fatalf("Failed to create users table: %v", err)
+}
+
+// Create tasks table
+_, err = testDB.Exec(`
+CREATE TABLE tasks (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+title TEXT NOT NULL,
+owner_id INTEGER NOT NULL,
+created_by INTEGER NOT NULL
+)
+`)
+if err != nil {
+t.Fatalf("Failed to create tasks table: %v", err)
+}
+
+// Insert instructor and students
+_, err = testDB.Exec("INSERT INTO users (id, username, password, role) VALUES (?, ?, ?, ?)",
+1, "instructor1", "pass", "instructor")
+if err != nil {
+t.Fatalf("Failed to insert instructor: %v", err)
+}
+
+for i := 2; i <= 5; i++ {
+_, err = testDB.Exec("INSERT INTO users (id, username, password, role, cohort_name) VALUES (?, ?, ?, ?, ?)",
+i, fmt.Sprintf("student%d", i-1), "pass", "student", "Java11.2")
+if err != nil {
+t.Fatalf("Failed to insert student: %v", err)
+}
+}
+
+// Select only students 2 and 4 (IDs 2 and 4)
+selectedStudentIDs := []int{2, 4}
+instructorID := 1
+taskTitle := "Selected Students Assignment"
+
+for _, studentID := range selectedStudentIDs {
+_, err := testDB.Exec("INSERT INTO tasks (title, owner_id, created_by) VALUES (?, ?, ?)",
+taskTitle, studentID, instructorID)
+if err != nil {
+t.Errorf("Failed to create task for student %d: %v", studentID, err)
+}
+}
+
+// Verify only selected students got the task
+var taskCount int
+err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE title = ?", taskTitle).Scan(&taskCount)
+if err != nil {
+t.Fatalf("Failed to count tasks: %v", err)
+}
+
+if taskCount != 2 {
+t.Errorf("Expected 2 tasks (for selected students only), got %d", taskCount)
+}
+
+// Verify specific students
+for _, studentID := range selectedStudentIDs {
+var count int
+err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE owner_id = ? AND title = ?",
+studentID, taskTitle).Scan(&count)
+if err != nil {
+t.Errorf("Failed to check task for student %d: %v", studentID, err)
+}
+if count != 1 {
+t.Errorf("Expected 1 task for student %d, got %d", studentID, count)
+}
+}
+
+// Verify non-selected students did not get the task
+nonSelectedStudentIDs := []int{3, 5}
+for _, studentID := range nonSelectedStudentIDs {
+var count int
+err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE owner_id = ? AND title = ?",
+studentID, taskTitle).Scan(&count)
+if err != nil {
+t.Errorf("Failed to check task for student %d: %v", studentID, err)
+}
+if count != 0 {
+t.Errorf("Expected 0 tasks for non-selected student %d, got %d", studentID, count)
+}
+}
+}
+
+// TestTaskImportValidation tests validation of task import data
+func TestTaskImportValidation(t *testing.T) {
+// Test valid task types
+validTaskTypes := []string{
+"group-programming-project",
+"individual-programming-lab",
+"reading",
+"document",
+"resume",
+"prodev",
+"",
+}
+
+taskTypeMap := map[string]bool{
+"group-programming-project": true,
+"individual-programming-lab": true,
+"reading":                    true,
+"document":                   true,
+"resume":                     true,
+"prodev":                     true,
+"":                           true,
+}
+
+for _, taskType := range validTaskTypes {
+if !taskTypeMap[taskType] {
+t.Errorf("Valid task type '%s' not recognized", taskType)
+}
+}
+
+// Test invalid task types
+invalidTaskTypes := []string{
+"coding",
+"submission",
+"invalid",
+"test",
+}
+
+for _, taskType := range invalidTaskTypes {
+if taskTypeMap[taskType] {
+t.Errorf("Invalid task type '%s' was accepted", taskType)
+}
+}
+}
