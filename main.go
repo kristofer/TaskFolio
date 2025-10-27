@@ -830,6 +830,7 @@ func taskStatsHandler(w http.ResponseWriter, r *http.Request) {
 		TaskType    string
 		ResourceURL string
 		CreatedBy   int
+		CreatorName string
 		CohortID    string
 		CreatedAt   string
 		TotalCount  int
@@ -845,6 +846,7 @@ func taskStatsHandler(w http.ResponseWriter, r *http.Request) {
 			COALESCE(t.task_type, '') as task_type,
 			COALESCE(t.resource_url, '') as resource_url,
 			t.created_by,
+			creator.username as creator_name,
 			COALESCE(t.cohort_id, '') as cohort_id,
 			MIN(t.created_at) as created_at,
 			COUNT(*) as total_count,
@@ -852,9 +854,10 @@ func taskStatsHandler(w http.ResponseWriter, r *http.Request) {
 			SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as completed
 		FROM tasks t
 		JOIN users u ON t.owner_id = u.id
+		JOIN users creator ON t.created_by = creator.id
 		WHERE t.created_by IN (SELECT id FROM users WHERE role = 'instructor')
 		AND u.role = 'student'
-		GROUP BY t.title, t.created_by, COALESCE(t.cohort_id, '')
+		GROUP BY t.title, t.created_by, creator.username, COALESCE(t.cohort_id, '')
 		HAVING COUNT(*) > 1
 		ORDER BY created_at DESC
 	`)
@@ -868,7 +871,7 @@ func taskStatsHandler(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var gt GroupTask
 		err := rows.Scan(&gt.Title, &gt.Description, &gt.DueDate, &gt.TaskType,
-			&gt.ResourceURL, &gt.CreatedBy, &gt.CohortID, &gt.CreatedAt,
+			&gt.ResourceURL, &gt.CreatedBy, &gt.CreatorName, &gt.CohortID, &gt.CreatedAt,
 			&gt.TotalCount, &gt.InProgress, &gt.Completed)
 		if err != nil {
 			log.Printf("Error scanning group task: %v", err)
