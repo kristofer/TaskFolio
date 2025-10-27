@@ -883,8 +883,7 @@
         }
         
         function loadCohorts() {
-            // Extract unique cohorts from the page data
-            // This would ideally come from the server, but we can extract from existing data
+            // Fetch cohorts from the server API
             fetch('/api/cohorts')
                 .then(response => response.json())
                 .then(cohorts => {

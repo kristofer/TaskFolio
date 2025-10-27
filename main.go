@@ -1322,7 +1322,7 @@ func importTasksHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		rows.Close()
 	case "students":
-		r.ParseForm()
+		// Form data already parsed by ParseMultipartForm above
 		studentIDs := r.Form["students"]
 		if len(studentIDs) == 0 {
 			http.Error(w, "Please select at least one student", http.StatusBadRequest)
@@ -1416,6 +1416,7 @@ func importTasksHandler(w http.ResponseWriter, r *http.Request) {
 			cohortID = r.FormValue("cohort")
 		}
 
+		taskSuccessCount := 0
 		for _, studentID := range targetStudentIDs {
 			_, err = db.Exec(`
 				INSERT INTO tasks (title, description, due_date, owner_id, created_by, task_type, resource_url, cohort_id)
@@ -1426,10 +1427,12 @@ func importTasksHandler(w http.ResponseWriter, r *http.Request) {
 				log.Printf("Failed to create task '%s' for student %d: %v", title, studentID, err)
 			} else {
 				tasksCreated++
+				taskSuccessCount++
 			}
 		}
 
-		if tasksCreated > 0 {
+		// Only add to imported list if at least one instance was created successfully
+		if taskSuccessCount > 0 {
 			importedTasks = append(importedTasks, title)
 		}
 	}
