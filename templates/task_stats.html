@@ -213,7 +213,12 @@
             {{range .GroupTasks}}
             <div class="task-stat-card">
                 <div class="task-stat-header">
-                    <div class="task-stat-title">{{.Title}}</div>
+                    <div class="task-stat-title">
+                        <a href="/tasks/detail?title={{.Title}}&created_by={{.CreatedBy}}&cohort_id={{.CohortID}}" 
+                           style="color: #1f2937; text-decoration: none;">
+                            {{.Title}}
+                        </a>
+                    </div>
                     {{if .CohortID}}
                     <div class="task-stat-badge">Cohort: {{.CohortID}}</div>
                     {{else}}
