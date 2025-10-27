@@ -955,6 +955,7 @@ func taskDetailHandler(w http.ResponseWriter, r *http.Request) {
 		FROM tasks t
 		JOIN users u ON t.created_by = u.id
 		WHERE t.title = ? AND t.created_by = ? AND COALESCE(t.cohort_id, '') = ?
+		ORDER BY t.created_at ASC
 		LIMIT 1
 	`, taskTitle, createdBy, cohortID).Scan(&taskInfo.Title, &taskInfo.Description, &taskInfo.DueDate,
 		&taskInfo.TaskType, &taskInfo.ResourceURL, &taskInfo.CreatedBy, &taskInfo.CreatorName,
