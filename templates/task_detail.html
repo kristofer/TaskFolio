@@ -335,7 +335,7 @@
                 {{if gt (index .StatusCounts "pending") 0}}
                 <div class="progress-segment progress-pending" 
                      style="width: {{printf "%.1f" (div (mul (index .StatusCounts "pending") 100.0) .TotalCount)}}%">
-                    {{if gt (printf "%.0f" (div (mul (index .StatusCounts "pending") 100.0) .TotalCount)) 5.0}}
+                    {{if gt (div (mul (index .StatusCounts "pending") 100.0) .TotalCount) 5.0}}
                     {{printf "%.0f" (div (mul (index .StatusCounts "pending") 100.0) .TotalCount)}}%
                     {{end}}
                 </div>
@@ -343,7 +343,7 @@
                 {{if gt (index .StatusCounts "blocked") 0}}
                 <div class="progress-segment progress-blocked" 
                      style="width: {{printf "%.1f" (div (mul (index .StatusCounts "blocked") 100.0) .TotalCount)}}%">
-                    {{if gt (printf "%.0f" (div (mul (index .StatusCounts "blocked") 100.0) .TotalCount)) 5.0}}
+                    {{if gt (div (mul (index .StatusCounts "blocked") 100.0) .TotalCount) 5.0}}
                     {{printf "%.0f" (div (mul (index .StatusCounts "blocked") 100.0) .TotalCount)}}%
                     {{end}}
                 </div>
@@ -351,7 +351,7 @@
                 {{if gt (index .StatusCounts "in_progress") 0}}
                 <div class="progress-segment progress-in-progress" 
                      style="width: {{printf "%.1f" (div (mul (index .StatusCounts "in_progress") 100.0) .TotalCount)}}%">
-                    {{if gt (printf "%.0f" (div (mul (index .StatusCounts "in_progress") 100.0) .TotalCount)) 5.0}}
+                    {{if gt (div (mul (index .StatusCounts "in_progress") 100.0) .TotalCount) 5.0}}
                     {{printf "%.0f" (div (mul (index .StatusCounts "in_progress") 100.0) .TotalCount)}}%
                     {{end}}
                 </div>
@@ -359,7 +359,7 @@
                 {{if gt (index .StatusCounts "completed") 0}}
                 <div class="progress-segment progress-completed" 
                      style="width: {{printf "%.1f" (div (mul (index .StatusCounts "completed") 100.0) .TotalCount)}}%">
-                    {{if gt (printf "%.0f" (div (mul (index .StatusCounts "completed") 100.0) .TotalCount)) 5.0}}
+                    {{if gt (div (mul (index .StatusCounts "completed") 100.0) .TotalCount) 5.0}}
                     {{printf "%.0f" (div (mul (index .StatusCounts "completed") 100.0) .TotalCount)}}%
                     {{end}}
                 </div>

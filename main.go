@@ -1586,6 +1586,30 @@ func apiStudentsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// toFloat64 converts various numeric types to float64
+func toFloat64(v interface{}) float64 {
+	switch val := v.(type) {
+	case float64:
+		return val
+	case float32:
+		return float64(val)
+	case int:
+		return float64(val)
+	case int64:
+		return float64(val)
+	case int32:
+		return float64(val)
+	case uint:
+		return float64(val)
+	case uint64:
+		return float64(val)
+	case uint32:
+		return float64(val)
+	default:
+		return 0
+	}
+}
+
 func main() {
 	if err := initDB(); err != nil {
 		log.Fatal("Failed to initialize database:", err)
@@ -1594,12 +1618,18 @@ func main() {
 
 	// Load templates with custom functions
 	funcMap := template.FuncMap{
-		"mul": func(a, b float64) float64 { return a * b },
-		"div": func(a, b float64) float64 {
-			if b == 0 {
+		"mul": func(a, b interface{}) float64 {
+			aVal := toFloat64(a)
+			bVal := toFloat64(b)
+			return aVal * bVal
+		},
+		"div": func(a, b interface{}) float64 {
+			aVal := toFloat64(a)
+			bVal := toFloat64(b)
+			if bVal == 0 {
 				return 0
 			}
-			return a / b
+			return aVal / bVal
 		},
 		"formatDate": func(v interface{}) string {
 			// Handle both string and time.Time inputs
