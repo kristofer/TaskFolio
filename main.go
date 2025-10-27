@@ -887,6 +887,143 @@ func taskStatsHandler(w http.ResponseWriter, r *http.Request) {
 	templates.ExecuteTemplate(w, "task_stats.html", data)
 }
 
+// taskDetailHandler shows a specific task and all students assigned to it
+func taskDetailHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can view task details
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	// Get task title and creator from query params
+	taskTitle := r.URL.Query().Get("title")
+	createdByStr := r.URL.Query().Get("created_by")
+	cohortID := r.URL.Query().Get("cohort_id")
+
+	if taskTitle == "" || createdByStr == "" {
+		http.Error(w, "Missing required parameters", http.StatusBadRequest)
+		return
+	}
+
+	createdBy, err := strconv.Atoi(createdByStr)
+	if err != nil {
+		http.Error(w, "Invalid created_by parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Get task details
+	type TaskAssignment struct {
+		TaskID         int
+		StudentID      int
+		StudentName    string
+		CohortName     string
+		Status         string
+		CreatedAt      time.Time
+		InProgressDate *time.Time
+		DoneDate       *time.Time
+	}
+
+	var taskInfo struct {
+		Title       string
+		Description string
+		DueDate     string
+		TaskType    string
+		ResourceURL string
+		CreatedBy   int
+		CreatorName string
+		CohortID    string
+		CreatedAt   time.Time
+	}
+
+	// Get task information from the first matching task
+	err = db.QueryRow(`
+		SELECT t.title, COALESCE(t.description, ''), COALESCE(t.due_date, ''),
+		       COALESCE(t.task_type, ''), COALESCE(t.resource_url, ''),
+		       t.created_by, u.username, COALESCE(t.cohort_id, ''), MIN(t.created_at)
+		FROM tasks t
+		JOIN users u ON t.created_by = u.id
+		WHERE t.title = ? AND t.created_by = ? AND COALESCE(t.cohort_id, '') = ?
+		GROUP BY t.title, t.description, t.due_date, t.task_type, t.resource_url, t.created_by, u.username, t.cohort_id
+	`, taskTitle, createdBy, cohortID).Scan(&taskInfo.Title, &taskInfo.Description, &taskInfo.DueDate,
+		&taskInfo.TaskType, &taskInfo.ResourceURL, &taskInfo.CreatedBy, &taskInfo.CreatorName,
+		&taskInfo.CohortID, &taskInfo.CreatedAt)
+
+	if err != nil {
+		http.Error(w, "Task not found", http.StatusNotFound)
+		return
+	}
+
+	// Get all students assigned to this task
+	rows, err := db.Query(`
+		SELECT t.id, t.owner_id, u.username, COALESCE(u.cohort_name, ''),
+		       t.status, t.created_at, t.in_progress_date, t.done_date
+		FROM tasks t
+		JOIN users u ON t.owner_id = u.id
+		WHERE t.title = ? AND t.created_by = ? AND COALESCE(t.cohort_id, '') = ?
+		ORDER BY u.username
+	`, taskTitle, createdBy, cohortID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var assignments []TaskAssignment
+	statusCounts := map[string]int{
+		"pending":     0,
+		"in_progress": 0,
+		"completed":   0,
+		"blocked":     0,
+	}
+
+	for rows.Next() {
+		var ta TaskAssignment
+		var inProgressDate, doneDate sql.NullTime
+		err := rows.Scan(&ta.TaskID, &ta.StudentID, &ta.StudentName, &ta.CohortName,
+			&ta.Status, &ta.CreatedAt, &inProgressDate, &doneDate)
+		if err != nil {
+			log.Printf("Error scanning task assignment: %v", err)
+			continue
+		}
+		if inProgressDate.Valid {
+			ta.InProgressDate = &inProgressDate.Time
+		}
+		if doneDate.Valid {
+			ta.DoneDate = &doneDate.Time
+		}
+		assignments = append(assignments, ta)
+		statusCounts[ta.Status]++
+	}
+
+	data := struct {
+		User         User
+		TaskInfo     interface{}
+		Assignments  []TaskAssignment
+		StatusCounts map[string]int
+		TotalCount   int
+	}{
+		User:         user,
+		TaskInfo:     taskInfo,
+		Assignments:  assignments,
+		StatusCounts: statusCounts,
+		TotalCount:   len(assignments),
+	}
+
+	templates.ExecuteTemplate(w, "task_detail.html", data)
+}
+
 // instructorsHandler displays list of instructors for instructors to manage
 func instructorsHandler(w http.ResponseWriter, r *http.Request) {
 	session, err := getSession(r)
@@ -1126,17 +1263,30 @@ func main() {
 			}
 			return a / b
 		},
-		"formatDate": func(dateStr string) string {
-			// Parse SQLite timestamp format and convert to friendly format
-			t, err := time.Parse("2006-01-02 15:04:05", dateStr)
-			if err != nil {
-				// Try alternate format
-				t, err = time.Parse(time.RFC3339, dateStr)
+		"formatDate": func(v interface{}) string {
+			// Handle both string and time.Time inputs
+			switch val := v.(type) {
+			case string:
+				// Parse SQLite timestamp format and convert to friendly format
+				t, err := time.Parse("2006-01-02 15:04:05", val)
 				if err != nil {
-					return dateStr // Return as-is if parsing fails
+					// Try alternate format
+					t, err = time.Parse(time.RFC3339, val)
+					if err != nil {
+						return val // Return as-is if parsing fails
+					}
 				}
+				return t.Format("Jan 2, 2006")
+			case time.Time:
+				return val.Format("Jan 2, 2006")
+			case *time.Time:
+				if val != nil {
+					return val.Format("Jan 2, 2006")
+				}
+				return ""
+			default:
+				return fmt.Sprintf("%v", v)
 			}
-			return t.Format("Jan 2, 2006")
 		},
 	}
 	templates = template.Must(template.New("").Funcs(funcMap).ParseGlob("templates/*.html"))
@@ -1156,6 +1306,7 @@ func main() {
 	http.HandleFunc("/students/edit", editStudentHandler)
 	http.HandleFunc("/students/progress", studentProgressHandler)
 	http.HandleFunc("/tasks/stats", taskStatsHandler)
+	http.HandleFunc("/tasks/detail", taskDetailHandler)
 	http.HandleFunc("/instructors", instructorsHandler)
 	http.HandleFunc("/instructors/add", addInstructorHandler)
 

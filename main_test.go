@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"testing"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -1900,6 +1901,161 @@ func TestImportStudents(t *testing.T) {
 	
 	if err == nil {
 		t.Errorf("Expected error when inserting duplicate username, got nil")
+	}
+}
+
+// TestTaskDetailTracking tests the ability to view a specific task with all assigned students
+func TestTaskDetailTracking(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL,
+			role TEXT NOT NULL,
+			cohort_name TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Create tasks table with tracking fields
+	_, err = testDB.Exec(`
+		CREATE TABLE tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			description TEXT,
+			status TEXT DEFAULT 'pending',
+			owner_id INTEGER NOT NULL,
+			created_by INTEGER NOT NULL,
+			cohort_id TEXT,
+			in_progress_date DATETIME,
+			done_date DATETIME,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create tasks table: %v", err)
+	}
+
+	// Insert instructor and students
+	cohortName := "Java11.2"
+	_, err = testDB.Exec("INSERT INTO users (id, username, password, role) VALUES (?, ?, ?, ?)", 
+		1, "instructor1", "pass", "instructor")
+	if err != nil {
+		t.Fatalf("Failed to insert instructor: %v", err)
+	}
+
+	for i := 2; i <= 5; i++ {
+		_, err = testDB.Exec("INSERT INTO users (id, username, password, role, cohort_name) VALUES (?, ?, ?, ?, ?)",
+			i, fmt.Sprintf("student%d", i-1), "pass", "student", cohortName)
+		if err != nil {
+			t.Fatalf("Failed to insert student: %v", err)
+		}
+	}
+
+	// Create a task assigned to all students in the cohort
+	taskTitle := "Group Programming Project"
+	instructorID := 1
+
+	// Student 2: pending
+	_, err = testDB.Exec("INSERT INTO tasks (title, status, owner_id, created_by, cohort_id) VALUES (?, ?, ?, ?, ?)",
+		taskTitle, "pending", 2, instructorID, cohortName)
+	if err != nil {
+		t.Fatalf("Failed to insert task: %v", err)
+	}
+
+	// Student 3: in_progress (with in_progress_date)
+	_, err = testDB.Exec("INSERT INTO tasks (title, status, owner_id, created_by, cohort_id, in_progress_date) VALUES (?, ?, ?, ?, ?, ?)",
+		taskTitle, "in_progress", 3, instructorID, cohortName, time.Now())
+	if err != nil {
+		t.Fatalf("Failed to insert task: %v", err)
+	}
+
+	// Student 4: completed (with both dates)
+	_, err = testDB.Exec("INSERT INTO tasks (title, status, owner_id, created_by, cohort_id, in_progress_date, done_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		taskTitle, "completed", 4, instructorID, cohortName, time.Now().Add(-48*time.Hour), time.Now())
+	if err != nil {
+		t.Fatalf("Failed to insert task: %v", err)
+	}
+
+	// Student 5: blocked
+	_, err = testDB.Exec("INSERT INTO tasks (title, status, owner_id, created_by, cohort_id) VALUES (?, ?, ?, ?, ?)",
+		taskTitle, "blocked", 5, instructorID, cohortName)
+	if err != nil {
+		t.Fatalf("Failed to insert task: %v", err)
+	}
+
+	// Query task details with all assigned students
+	rows, err := testDB.Query(`
+		SELECT t.id, t.owner_id, u.username, COALESCE(u.cohort_name, ''),
+		       t.status, t.created_at, t.in_progress_date, t.done_date
+		FROM tasks t
+		JOIN users u ON t.owner_id = u.id
+		WHERE t.title = ? AND t.created_by = ? AND COALESCE(t.cohort_id, '') = ?
+		ORDER BY u.username
+	`, taskTitle, instructorID, cohortName)
+	if err != nil {
+		t.Fatalf("Failed to query task details: %v", err)
+	}
+	defer rows.Close()
+
+	statusCounts := map[string]int{
+		"pending":     0,
+		"in_progress": 0,
+		"completed":   0,
+		"blocked":     0,
+	}
+	totalAssignments := 0
+
+	for rows.Next() {
+		var taskID, studentID int
+		var studentName, cohort, status string
+		var createdAt time.Time
+		var inProgressDate, doneDate sql.NullTime
+		
+		err := rows.Scan(&taskID, &studentID, &studentName, &cohort, &status, &createdAt, &inProgressDate, &doneDate)
+		if err != nil {
+			t.Errorf("Failed to scan row: %v", err)
+			continue
+		}
+
+		statusCounts[status]++
+		totalAssignments++
+
+		// Verify tracking fields for specific statuses
+		if status == "in_progress" && !inProgressDate.Valid {
+			t.Errorf("Expected in_progress_date to be set for in_progress task")
+		}
+		if status == "completed" {
+			if !doneDate.Valid {
+				t.Errorf("Expected done_date to be set for completed task")
+			}
+		}
+	}
+
+	// Verify counts
+	if totalAssignments != 4 {
+		t.Errorf("Expected 4 total assignments, got %d", totalAssignments)
+	}
+	if statusCounts["pending"] != 1 {
+		t.Errorf("Expected 1 pending task, got %d", statusCounts["pending"])
+	}
+	if statusCounts["in_progress"] != 1 {
+		t.Errorf("Expected 1 in_progress task, got %d", statusCounts["in_progress"])
+	}
+	if statusCounts["completed"] != 1 {
+		t.Errorf("Expected 1 completed task, got %d", statusCounts["completed"])
+	}
+	if statusCounts["blocked"] != 1 {
+		t.Errorf("Expected 1 blocked task, got %d", statusCounts["blocked"])
 	}
 }
 
