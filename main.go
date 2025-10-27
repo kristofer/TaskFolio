@@ -1,9 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"database/sql"
+	"encoding/csv"
 	"fmt"
+	"html"
 	"html/template"
 	"log"
 	"net/http"
@@ -561,8 +562,8 @@ func importStudentsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse multipart form (max 10MB)
-	err = r.ParseMultipartForm(10 << 20)
+	// Parse multipart form (max 1MB for CSV files)
+	err = r.ParseMultipartForm(1 << 20)
 	if err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
@@ -575,31 +576,43 @@ func importStudentsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// Read and parse CSV using bufio.Scanner
+	// Read and parse CSV using encoding/csv for proper CSV handling
 	var importedStudents []string
 	var failedImports []string
 	lineNum := 0
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
+	csvReader := csv.NewReader(file)
+	csvReader.FieldsPerRecord = -1 // Allow variable number of fields
+	csvReader.TrimLeadingSpace = true
+
+	for {
+		record, err := csvReader.Read()
+		if err != nil {
+			if err.Error() == "EOF" {
+				break
+			}
+			http.Error(w, "Failed to read CSV file", http.StatusBadRequest)
+			return
+		}
+
 		lineNum++
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
+		
+		// Skip empty lines
+		if len(record) == 0 || (len(record) == 1 && strings.TrimSpace(record[0]) == "") {
 			continue
 		}
 
 		// Parse CSV line: Username, Password, Cohort
-		parts := strings.Split(line, ",")
-		if len(parts) < 2 {
+		if len(record) < 2 {
 			failedImports = append(failedImports, fmt.Sprintf("Line %d: Invalid format (need at least Username, Password)", lineNum))
 			continue
 		}
 
-		username := strings.TrimSpace(parts[0])
-		password := strings.TrimSpace(parts[1])
+		username := strings.TrimSpace(record[0])
+		password := strings.TrimSpace(record[1])
 		cohort := ""
-		if len(parts) >= 3 {
-			cohort = strings.TrimSpace(parts[2])
+		if len(record) >= 3 {
+			cohort = strings.TrimSpace(record[2])
 		}
 
 		if username == "" || password == "" {
@@ -608,6 +621,7 @@ func importStudentsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Insert student into database
+		// Note: Passwords are stored in plaintext as per existing application design
 		_, err = db.Exec(`
 			INSERT INTO users (username, password, role, cohort_name, is_suspended)
 			VALUES (?, ?, 'student', ?, 0)
@@ -618,11 +632,6 @@ func importStudentsHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			importedStudents = append(importedStudents, username)
 		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		http.Error(w, "Failed to read file content", http.StatusInternalServerError)
-		return
 	}
 
 	// Generate report
@@ -660,7 +669,7 @@ func importStudentsHandler(w http.ResponseWriter, r *http.Request) {
             <h2>Successfully Imported: %d student(s)</h2>
             <ul class="list">`, len(importedStudents))
 		for _, username := range importedStudents {
-			fmt.Fprintf(w, "<li>%s</li>", username)
+			fmt.Fprintf(w, "<li>%s</li>", html.EscapeString(username))
 		}
 		fmt.Fprintf(w, "</ul></div>")
 	}
@@ -670,7 +679,7 @@ func importStudentsHandler(w http.ResponseWriter, r *http.Request) {
             <h2>Failed Imports: %d</h2>
             <ul class="list">`, len(failedImports))
 		for _, failure := range failedImports {
-			fmt.Fprintf(w, "<li>%s</li>", failure)
+			fmt.Fprintf(w, "<li>%s</li>", html.EscapeString(failure))
 		}
 		fmt.Fprintf(w, "</ul></div>")
 	}
