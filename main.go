@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"database/sql"
 	"fmt"
 	"html/template"
@@ -535,6 +536,156 @@ func addStudentHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/students", http.StatusSeeOther)
 }
 
+// importStudentsHandler handles bulk import of students from CSV file
+func importStudentsHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can import students
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse multipart form (max 10MB)
+	err = r.ParseMultipartForm(10 << 20)
+	if err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	file, _, err := r.FormFile("csvfile")
+	if err != nil {
+		http.Error(w, "Failed to read file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Read and parse CSV using bufio.Scanner
+	var importedStudents []string
+	var failedImports []string
+	lineNum := 0
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lineNum++
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		// Parse CSV line: Username, Password, Cohort
+		parts := strings.Split(line, ",")
+		if len(parts) < 2 {
+			failedImports = append(failedImports, fmt.Sprintf("Line %d: Invalid format (need at least Username, Password)", lineNum))
+			continue
+		}
+
+		username := strings.TrimSpace(parts[0])
+		password := strings.TrimSpace(parts[1])
+		cohort := ""
+		if len(parts) >= 3 {
+			cohort = strings.TrimSpace(parts[2])
+		}
+
+		if username == "" || password == "" {
+			failedImports = append(failedImports, fmt.Sprintf("Line %d: Username or password is empty", lineNum))
+			continue
+		}
+
+		// Insert student into database
+		_, err = db.Exec(`
+			INSERT INTO users (username, password, role, cohort_name, is_suspended)
+			VALUES (?, ?, 'student', ?, 0)
+		`, username, password, cohort)
+
+		if err != nil {
+			failedImports = append(failedImports, fmt.Sprintf("%s: %v", username, err))
+		} else {
+			importedStudents = append(importedStudents, username)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		http.Error(w, "Failed to read file content", http.StatusInternalServerError)
+		return
+	}
+
+	// Generate report
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html>
+<head>
+    <title>Import Results - Tasking</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f5f7fa; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h1 { color: #2C5F7C; }
+        .success { color: #065f46; background: #d1fae5; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        .error { color: #991b1b; background: #fee2e2; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        .list { margin: 10px 0; padding-left: 20px; }
+        .btn { 
+            display: inline-block;
+            padding: 10px 20px; 
+            background: #667eea; 
+            color: white; 
+            text-decoration: none; 
+            border-radius: 5px; 
+            margin-top: 20px;
+        }
+        .btn:hover { opacity: 0.9; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Import Results</h1>
+`)
+
+	if len(importedStudents) > 0 {
+		fmt.Fprintf(w, `<div class="success">
+            <h2>Successfully Imported: %d student(s)</h2>
+            <ul class="list">`, len(importedStudents))
+		for _, username := range importedStudents {
+			fmt.Fprintf(w, "<li>%s</li>", username)
+		}
+		fmt.Fprintf(w, "</ul></div>")
+	}
+
+	if len(failedImports) > 0 {
+		fmt.Fprintf(w, `<div class="error">
+            <h2>Failed Imports: %d</h2>
+            <ul class="list">`, len(failedImports))
+		for _, failure := range failedImports {
+			fmt.Fprintf(w, "<li>%s</li>", failure)
+		}
+		fmt.Fprintf(w, "</ul></div>")
+	}
+
+	if len(importedStudents) == 0 && len(failedImports) == 0 {
+		fmt.Fprintf(w, `<div class="error">No students were imported. Please check your CSV file format.</div>`)
+	}
+
+	fmt.Fprintf(w, `
+        <a href="/students" class="btn">← Back to Students</a>
+    </div>
+</body>
+</html>`)
+}
+
 // studentProgressHandler shows task completion for a specific student
 func studentProgressHandler(w http.ResponseWriter, r *http.Request) {
 	session, err := getSession(r)
@@ -991,6 +1142,7 @@ func main() {
 	http.HandleFunc("/tasks/update-status", updateTaskStatusHandler)
 	http.HandleFunc("/students", studentsHandler)
 	http.HandleFunc("/students/add", addStudentHandler)
+	http.HandleFunc("/students/import", importStudentsHandler)
 	http.HandleFunc("/students/edit", editStudentHandler)
 	http.HandleFunc("/students/progress", studentProgressHandler)
 	http.HandleFunc("/tasks/stats", taskStatsHandler)

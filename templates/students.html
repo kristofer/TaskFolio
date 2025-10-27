@@ -132,8 +132,23 @@
             <h2>Students</h2>
             <div style="display: flex; gap: 10px;">
                 <a href="/instructors" class="btn btn-primary">Manage Instructors</a>
+                <button onclick="document.getElementById('importForm').style.display='block'" class="btn btn-primary">Import Students</button>
                 <a href="/students/add" class="btn btn-primary">+ Add New Student</a>
             </div>
+        </div>
+        
+        <!-- Import Students Form (hidden by default) -->
+        <div id="importForm" style="display: none; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px;">
+            <h3 style="margin-bottom: 15px;">Import Students from CSV</h3>
+            <p style="margin-bottom: 15px; color: #666;">Upload a CSV file with format: Username, Password, Cohort</p>
+            <p style="margin-bottom: 15px; color: #666; font-size: 14px;">Example:<br/>
+            AndrewYounger, zipcode0, Java1.0<br/>
+            BillyBobThornton, zipcode1, Data1.0</p>
+            <form action="/students/import" method="POST" enctype="multipart/form-data" style="display: flex; gap: 10px; align-items: center;">
+                <input type="file" name="csvfile" accept=".csv" required style="padding: 8px;">
+                <button type="submit" class="btn btn-primary">Upload</button>
+                <button type="button" onclick="document.getElementById('importForm').style.display='none'" class="btn">Cancel</button>
+            </form>
         </div>
         
         {{if .Students}}
