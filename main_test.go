@@ -1821,3 +1821,86 @@ func TestInstructorCannotDeleteStudentCreatedTasks(t *testing.T) {
 	}
 }
 
+func TestImportStudents(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table with cohort_name column
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL,
+			role TEXT NOT NULL CHECK(role IN ('student', 'instructor')),
+			cohort_name TEXT,
+			is_suspended BOOLEAN DEFAULT 0
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Test data simulating CSV import
+	tests := []struct {
+		username   string
+		password   string
+		cohortName string
+	}{
+		{"AndrewYounger", "zipcode0", "Java1.0"},
+		{"BillyBobThornton", "zipcode1", "Data1.0"},
+		{"TestStudent", "password123", "Java11.2"},
+	}
+
+	// Simulate the import process
+	for _, tt := range tests {
+		_, err := testDB.Exec(`
+			INSERT INTO users (username, password, role, cohort_name, is_suspended)
+			VALUES (?, ?, 'student', ?, 0)
+		`, tt.username, tt.password, tt.cohortName)
+		if err != nil {
+			t.Errorf("Failed to import student %s: %v", tt.username, err)
+		}
+	}
+
+	// Verify students were imported
+	var count int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM users WHERE role = 'student'").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to count students: %v", err)
+	}
+
+	if count != len(tests) {
+		t.Errorf("Expected %d students, got %d", len(tests), count)
+	}
+
+	// Verify specific student details
+	var username, password, cohortName string
+	err = testDB.QueryRow(`
+		SELECT username, password, cohort_name 
+		FROM users 
+		WHERE username = 'AndrewYounger'
+	`).Scan(&username, &password, &cohortName)
+	if err != nil {
+		t.Fatalf("Failed to query imported student: %v", err)
+	}
+
+	if username != "AndrewYounger" || password != "zipcode0" || cohortName != "Java1.0" {
+		t.Errorf("Student data mismatch: got username=%s, password=%s, cohort=%s", 
+			username, password, cohortName)
+	}
+
+	// Test duplicate username constraint
+	_, err = testDB.Exec(`
+		INSERT INTO users (username, password, role, cohort_name, is_suspended)
+		VALUES (?, ?, 'student', ?, 0)
+	`, "AndrewYounger", "newpassword", "Data2.0")
+	
+	if err == nil {
+		t.Errorf("Expected error when inserting duplicate username, got nil")
+	}
+}
+
+
