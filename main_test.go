@@ -2486,3 +2486,160 @@ t.Errorf("Invalid task type '%s' was accepted", taskType)
 }
 }
 }
+
+func TestTaskStatsWithCreatorName(t *testing.T) {
+testDB, err := sql.Open("sqlite3", ":memory:")
+if err != nil {
+t.Fatalf("Failed to open test database: %v", err)
+}
+defer testDB.Close()
+
+// Create users table
+_, err = testDB.Exec(`
+CREATE TABLE users (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+username TEXT UNIQUE NOT NULL,
+role TEXT NOT NULL,
+cohort_name TEXT
+)
+`)
+if err != nil {
+t.Fatalf("Failed to create users table: %v", err)
+}
+
+// Create tasks table
+_, err = testDB.Exec(`
+CREATE TABLE tasks (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+title TEXT NOT NULL,
+description TEXT,
+status TEXT DEFAULT 'pending',
+owner_id INTEGER NOT NULL,
+created_by INTEGER NOT NULL,
+cohort_id TEXT,
+created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+`)
+if err != nil {
+t.Fatalf("Failed to create tasks table: %v", err)
+}
+
+// Insert instructors and students
+_, err = testDB.Exec("INSERT INTO users (id, username, role) VALUES (?, ?, ?)", 1, "instructor1", "instructor")
+if err != nil {
+t.Fatalf("Failed to insert instructor: %v", err)
+}
+
+_, err = testDB.Exec("INSERT INTO users (id, username, role) VALUES (?, ?, ?)", 2, "instructor2", "instructor")
+if err != nil {
+t.Fatalf("Failed to insert instructor: %v", err)
+}
+
+for i := 3; i <= 5; i++ {
+_, err = testDB.Exec("INSERT INTO users (id, username, role) VALUES (?, ?, ?)",
+i, fmt.Sprintf("student%d", i-2), "student")
+if err != nil {
+t.Fatalf("Failed to insert student: %v", err)
+}
+}
+
+// Create tasks assigned by different instructors
+_, err = testDB.Exec("INSERT INTO tasks (title, status, owner_id, created_by) VALUES (?, ?, ?, ?)",
+"Task by Instructor 1", "pending", 3, 1)
+if err != nil {
+t.Fatalf("Failed to insert task: %v", err)
+}
+
+_, err = testDB.Exec("INSERT INTO tasks (title, status, owner_id, created_by) VALUES (?, ?, ?, ?)",
+"Task by Instructor 1", "completed", 4, 1)
+if err != nil {
+t.Fatalf("Failed to insert task: %v", err)
+}
+
+_, err = testDB.Exec("INSERT INTO tasks (title, status, owner_id, created_by) VALUES (?, ?, ?, ?)",
+"Task by Instructor 2", "pending", 3, 2)
+if err != nil {
+t.Fatalf("Failed to insert task: %v", err)
+}
+
+_, err = testDB.Exec("INSERT INTO tasks (title, status, owner_id, created_by) VALUES (?, ?, ?, ?)",
+"Task by Instructor 2", "in_progress", 5, 2)
+if err != nil {
+t.Fatalf("Failed to insert task: %v", err)
+}
+
+// Query group task statistics with creator name
+rows, err := testDB.Query(`
+SELECT
+t.title,
+t.created_by,
+creator.username as creator_name,
+COUNT(*) as total_count,
+SUM(CASE WHEN t.status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as completed
+FROM tasks t
+JOIN users u ON t.owner_id = u.id
+JOIN users creator ON t.created_by = creator.id
+WHERE t.created_by IN (SELECT id FROM users WHERE role = 'instructor')
+AND u.role = 'student'
+GROUP BY t.title, t.created_by, creator.username
+HAVING COUNT(*) > 1
+ORDER BY t.title
+`)
+if err != nil {
+t.Fatalf("Failed to query task stats: %v", err)
+}
+defer rows.Close()
+
+type TaskStat struct {
+Title       string
+CreatedBy   int
+CreatorName string
+TotalCount  int
+InProgress  int
+Completed   int
+}
+
+var taskStats []TaskStat
+for rows.Next() {
+var ts TaskStat
+err := rows.Scan(&ts.Title, &ts.CreatedBy, &ts.CreatorName, &ts.TotalCount, &ts.InProgress, &ts.Completed)
+if err != nil {
+t.Fatalf("Failed to scan task stat: %v", err)
+}
+taskStats = append(taskStats, ts)
+}
+
+// Verify results
+if len(taskStats) != 2 {
+t.Errorf("Expected 2 group tasks, got %d", len(taskStats))
+}
+
+// Check first task (instructor1)
+if taskStats[0].Title != "Task by Instructor 1" {
+t.Errorf("Expected first task title 'Task by Instructor 1', got '%s'", taskStats[0].Title)
+}
+if taskStats[0].CreatorName != "instructor1" {
+t.Errorf("Expected creator name 'instructor1', got '%s'", taskStats[0].CreatorName)
+}
+if taskStats[0].TotalCount != 2 {
+t.Errorf("Expected 2 total tasks for instructor1, got %d", taskStats[0].TotalCount)
+}
+if taskStats[0].Completed != 1 {
+t.Errorf("Expected 1 completed task for instructor1, got %d", taskStats[0].Completed)
+}
+
+// Check second task (instructor2)
+if taskStats[1].Title != "Task by Instructor 2" {
+t.Errorf("Expected second task title 'Task by Instructor 2', got '%s'", taskStats[1].Title)
+}
+if taskStats[1].CreatorName != "instructor2" {
+t.Errorf("Expected creator name 'instructor2', got '%s'", taskStats[1].CreatorName)
+}
+if taskStats[1].TotalCount != 2 {
+t.Errorf("Expected 2 total tasks for instructor2, got %d", taskStats[1].TotalCount)
+}
+if taskStats[1].InProgress != 1 {
+t.Errorf("Expected 1 in-progress task for instructor2, got %d", taskStats[1].InProgress)
+}
+}
