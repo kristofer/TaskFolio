@@ -1872,14 +1872,15 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			
-			// Build placeholders for IN clause (safe - only contains '?' characters)
-			placeholders := make([]string, len(studentIDs))
-			for i := range placeholders {
-				placeholders[i] = "?"
+			// Build placeholders for IN clause - simpler approach
+			placeholderSlice := make([]string, len(studentIDs))
+			for i := range placeholderSlice {
+				placeholderSlice[i] = "?"
 			}
+			placeholders := strings.Join(placeholderSlice, ",")
 			
 			// Validate all student IDs at once
-			query := fmt.Sprintf("SELECT id FROM users WHERE id IN (%s) AND role = 'student'", strings.Join(placeholders, ","))
+			query := fmt.Sprintf("SELECT id FROM users WHERE id IN (%s) AND role = 'student'", placeholders)
 			rows, err := db.Query(query, args...)
 			if err != nil {
 				http.Error(w, fmt.Sprintf("Failed to validate student IDs: %v", err), http.StatusInternalServerError)
