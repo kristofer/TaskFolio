@@ -1855,7 +1855,6 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 			// Parse the comma-separated student IDs
 			studentIDStrs := strings.Split(filteredStudents, ",")
 			var studentIDs []int
-			var placeholders []string
 			var args []interface{}
 			
 			for _, idStr := range studentIDStrs {
@@ -1865,13 +1864,18 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 					continue
 				}
 				studentIDs = append(studentIDs, studentID)
-				placeholders = append(placeholders, "?")
 				args = append(args, studentID)
 			}
 			
 			if len(studentIDs) == 0 {
 				http.Error(w, "No valid student IDs provided", http.StatusBadRequest)
 				return
+			}
+			
+			// Build placeholders for IN clause (safe - only contains '?' characters)
+			placeholders := make([]string, len(studentIDs))
+			for i := range placeholders {
+				placeholders[i] = "?"
 			}
 			
 			// Validate all student IDs at once
@@ -1881,6 +1885,7 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, fmt.Sprintf("Failed to validate student IDs: %v", err), http.StatusInternalServerError)
 				return
 			}
+			defer rows.Close()
 			
 			validStudentIDs := make(map[int]bool)
 			for rows.Next() {
@@ -1891,7 +1896,6 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				validStudentIDs[id] = true
 			}
-			rows.Close()
 			
 			// Check if any invalid IDs were provided
 			invalidCount := 0
