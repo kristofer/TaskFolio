@@ -3511,3 +3511,241 @@ func TestGetAllGroups(t *testing.T) {
 		}
 	}
 }
+
+// TestGroupDetailWithMembers tests retrieving group details with member information
+func TestGroupDetailWithMembers(t *testing.T) {
+	testDB := createTestDB(t)
+	defer testDB.Close()
+	db = testDB
+
+	// Create test students
+	studentIDs := []int{}
+	studentNames := []string{"alice", "bob", "charlie"}
+	for _, name := range studentNames {
+		result, err := testDB.Exec(`
+			INSERT INTO users (username, password, role, cohort_name)
+			VALUES (?, ?, 'student', 'Java11.2')
+		`, name, "password123")
+		if err != nil {
+			t.Fatalf("Failed to create student: %v", err)
+		}
+		id, _ := result.LastInsertId()
+		studentIDs = append(studentIDs, int(id))
+	}
+
+	// Create a group
+	result, err := testDB.Exec(`
+		INSERT INTO groups (name, description, project_url, is_active)
+		VALUES (?, ?, ?, ?)
+	`, "Project Alpha", "Team project for final exam", "https://github.com/team/alpha", true)
+	if err != nil {
+		t.Fatalf("Failed to create group: %v", err)
+	}
+
+	groupID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("Failed to get group ID: %v", err)
+	}
+
+	// Add students to group
+	for _, studentID := range studentIDs {
+		_, err = testDB.Exec(`
+			INSERT INTO group_members (group_id, student_id)
+			VALUES (?, ?)
+		`, groupID, studentID)
+		if err != nil {
+			t.Fatalf("Failed to add student to group: %v", err)
+		}
+	}
+
+	// Retrieve group details using getGroupByID
+	group, err := getGroupByID(int(groupID))
+	if err != nil {
+		t.Fatalf("Failed to retrieve group: %v", err)
+	}
+
+	// Verify group details
+	if group.Name != "Project Alpha" {
+		t.Errorf("Expected group name 'Project Alpha', got '%s'", group.Name)
+	}
+	if group.Description != "Team project for final exam" {
+		t.Errorf("Expected description 'Team project for final exam', got '%s'", group.Description)
+	}
+	if !group.IsActive {
+		t.Errorf("Expected group to be active")
+	}
+
+	// Verify member count
+	if len(group.Students) != 3 {
+		t.Errorf("Expected 3 students in group, got %d", len(group.Students))
+	}
+
+	// Verify all student IDs are present
+	foundStudents := make(map[int]bool)
+	for _, studentID := range group.Students {
+		foundStudents[studentID] = true
+	}
+
+	for _, expectedID := range studentIDs {
+		if !foundStudents[expectedID] {
+			t.Errorf("Expected to find student ID %d in group members", expectedID)
+		}
+	}
+
+	// Get student details for verification (simulating what group detail page does)
+	placeholders := make([]string, len(group.Students))
+	args := make([]interface{}, len(group.Students))
+	for i, studentID := range group.Students {
+		placeholders[i] = "?"
+		args[i] = studentID
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, username, COALESCE(cohort_name, ''), role
+		FROM users WHERE id IN (%s) ORDER BY username
+	`, strings.Join(placeholders, ","))
+
+	rows, err := testDB.Query(query, args...)
+	if err != nil {
+		t.Fatalf("Failed to query student details: %v", err)
+	}
+	defer rows.Close()
+
+	var students []User
+	for rows.Next() {
+		var s User
+		if err := rows.Scan(&s.ID, &s.Username, &s.CohortName, &s.Role); err != nil {
+			t.Fatalf("Failed to scan student: %v", err)
+		}
+		students = append(students, s)
+	}
+
+	// Verify we got all students
+	if len(students) != 3 {
+		t.Errorf("Expected to retrieve 3 student details, got %d", len(students))
+	}
+
+	// Verify student data
+	for _, student := range students {
+		if student.Role != "student" {
+			t.Errorf("Expected role 'student', got '%s' for user %s", student.Role, student.Username)
+		}
+		if student.CohortName != "Java11.2" {
+			t.Errorf("Expected cohort 'Java11.2', got '%s' for user %s", student.CohortName, student.Username)
+		}
+	}
+}
+
+// TestGroupTasksRetrieval tests retrieving tasks assigned to a group
+func TestGroupTasksRetrieval(t *testing.T) {
+	testDB := createTestDB(t)
+	defer testDB.Close()
+	db = testDB
+
+	// Create instructor
+	instructorResult, err := testDB.Exec(`
+		INSERT INTO users (username, password, role)
+		VALUES (?, ?, 'instructor')
+	`, "instructor1", "password123")
+	if err != nil {
+		t.Fatalf("Failed to create instructor: %v", err)
+	}
+	instructorID, _ := instructorResult.LastInsertId()
+
+	// Create students
+	student1Result, err := testDB.Exec(`
+		INSERT INTO users (username, password, role)
+		VALUES (?, ?, 'student')
+	`, "student1", "password123")
+	if err != nil {
+		t.Fatalf("Failed to create student1: %v", err)
+	}
+	student1ID, _ := student1Result.LastInsertId()
+
+	student2Result, err := testDB.Exec(`
+		INSERT INTO users (username, password, role)
+		VALUES (?, ?, 'student')
+	`, "student2", "password123")
+	if err != nil {
+		t.Fatalf("Failed to create student2: %v", err)
+	}
+	student2ID, _ := student2Result.LastInsertId()
+
+	// Create a group
+	groupResult, err := testDB.Exec(`
+		INSERT INTO groups (name, description, is_active)
+		VALUES (?, ?, ?)
+	`, "Dev Team", "Development team for project", true)
+	if err != nil {
+		t.Fatalf("Failed to create group: %v", err)
+	}
+	groupID, _ := groupResult.LastInsertId()
+
+	// Add students to group
+	_, err = testDB.Exec(`
+		INSERT INTO group_members (group_id, student_id)
+		VALUES (?, ?), (?, ?)
+	`, groupID, student1ID, groupID, student2ID)
+	if err != nil {
+		t.Fatalf("Failed to add students to group: %v", err)
+	}
+
+	// Create tasks for the group (one for each member)
+	taskTitle := "Complete Sprint 1"
+	taskType := "group-programming-project"
+	
+	_, err = testDB.Exec(`
+		INSERT INTO tasks (title, description, due_date, owner_id, created_by, task_type, group_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, taskTitle, "Finish all user stories", "2025-11-15", student1ID, instructorID, taskType, groupID)
+	if err != nil {
+		t.Fatalf("Failed to create task for student1: %v", err)
+	}
+
+	_, err = testDB.Exec(`
+		INSERT INTO tasks (title, description, due_date, owner_id, created_by, task_type, group_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, taskTitle, "Finish all user stories", "2025-11-15", student2ID, instructorID, taskType, groupID)
+	if err != nil {
+		t.Fatalf("Failed to create task for student2: %v", err)
+	}
+
+	// Retrieve tasks for this group (simulating group detail page)
+	rows, err := testDB.Query(`
+		SELECT DISTINCT id, title, due_date, COALESCE(task_type, '')
+		FROM tasks
+		WHERE group_id = ?
+		ORDER BY created_at DESC
+	`, groupID)
+	if err != nil {
+		t.Fatalf("Failed to query group tasks: %v", err)
+	}
+	defer rows.Close()
+
+	var tasks []Task
+	for rows.Next() {
+		var task Task
+		if err := rows.Scan(&task.ID, &task.Title, &task.DueDate, &task.TaskType); err != nil {
+			t.Fatalf("Failed to scan task: %v", err)
+		}
+		tasks = append(tasks, task)
+	}
+
+	// Should have 2 tasks (one per student)
+	if len(tasks) != 2 {
+		t.Errorf("Expected 2 tasks for group, got %d", len(tasks))
+	}
+
+	// Verify task details
+	for _, task := range tasks {
+		if task.Title != taskTitle {
+			t.Errorf("Expected task title '%s', got '%s'", taskTitle, task.Title)
+		}
+		if task.TaskType != taskType {
+			t.Errorf("Expected task type '%s', got '%s'", taskType, task.TaskType)
+		}
+		if task.DueDate != "2025-11-15" {
+			t.Errorf("Expected due date '2025-11-15', got '%s'", task.DueDate)
+		}
+	}
+}
