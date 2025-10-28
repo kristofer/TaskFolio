@@ -117,6 +117,60 @@
             padding: 60px 20px;
             color: #666;
         }
+        .search-container {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 15px;
+            gap: 10px;
+        }
+        .search-box {
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            width: 250px;
+        }
+        .search-box:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .cohort-group-header {
+            background: #f0f4f8;
+            font-weight: 600;
+            color: #2c5f7c;
+            cursor: pointer;
+            user-select: none;
+        }
+        .cohort-group-header:hover {
+            background: #e5ecf1;
+        }
+        th.sortable {
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            padding-right: 30px;
+        }
+        th.sortable:hover {
+            background: #5a6fd8;
+        }
+        th.sortable::after {
+            content: '⇅';
+            position: absolute;
+            right: 10px;
+            opacity: 0.5;
+        }
+        th.sortable.asc::after {
+            content: '▲';
+            opacity: 1;
+        }
+        th.sortable.desc::after {
+            content: '▼';
+            opacity: 1;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -134,6 +188,7 @@
                 <a href="/instructors" class="btn btn-primary">Manage Instructors</a>
                 <button onclick="document.getElementById('importForm').style.display='block'" class="btn btn-primary">Import Students</button>
                 <a href="/students/add" class="btn btn-primary">+ Add New Student</a>
+                <button id="addTaskBtn" onclick="openAddTaskForFiltered()" class="btn btn-primary" disabled>+ Add Task to Filtered</button>
             </div>
         </div>
         
@@ -152,19 +207,24 @@
         </div>
         
         {{if .Students}}
+        <!-- Search Box -->
+        <div class="search-container">
+            <input type="text" id="searchBox" class="search-box" placeholder="Search by name or cohort..." onkeyup="filterStudents()">
+        </div>
+        
         <div class="students-table">
-            <table>
+            <table id="studentsTable">
                 <thead>
                     <tr>
-                        <th>Username</th>
-                        <th>Cohort</th>
-                        <th>Status</th>
+                        <th class="sortable" onclick="sortTable(0)">Username</th>
+                        <th class="sortable" onclick="sortTable(1)">Cohort</th>
+                        <th class="sortable" onclick="sortTable(2)">Status</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="studentsTableBody">
                     {{range .Students}}
-                    <tr>
+                    <tr class="student-row" data-username="{{.Username}}" data-cohort="{{.CohortName}}" data-student-id="{{.ID}}">
                         <td>{{.Username}}</td>
                         <td>
                             {{if .CohortName}}
@@ -196,5 +256,120 @@
         </div>
         {{end}}
     </div>
+    
+    <script>
+        let sortDirection = [0, 0, 0]; // 0: no sort, 1: ascending, -1: descending
+        let totalStudentCount = 0;
+        let currentFilteredStudents = [];
+        
+        // Initialize total student count on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            const rows = document.querySelectorAll('.student-row');
+            totalStudentCount = rows.length;
+            updateFilteredStudents();
+        });
+        
+        function filterStudents() {
+            const searchTerm = document.getElementById('searchBox').value.toLowerCase();
+            const rows = document.querySelectorAll('.student-row');
+            let visibleCount = 0;
+            
+            rows.forEach(row => {
+                const username = row.getAttribute('data-username').toLowerCase();
+                const cohort = row.getAttribute('data-cohort').toLowerCase();
+                
+                if (username.includes(searchTerm) || cohort.includes(searchTerm)) {
+                    row.style.display = '';
+                    visibleCount++;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+            
+            updateFilteredStudents();
+            updateAddTaskButton(visibleCount);
+        }
+        
+        function updateFilteredStudents() {
+            const rows = document.querySelectorAll('.student-row');
+            currentFilteredStudents = [];
+            
+            rows.forEach(row => {
+                if (row.style.display !== 'none') {
+                    const studentId = row.getAttribute('data-student-id');
+                    currentFilteredStudents.push(studentId);
+                }
+            });
+        }
+        
+        function shouldEnableFilteredTaskButton(visibleCount) {
+            const searchBox = document.getElementById('searchBox');
+            // Enable button only when search is active and results are shown (but not all students)
+            return searchBox.value.trim() !== '' && visibleCount > 0 && visibleCount < totalStudentCount;
+        }
+        
+        function updateAddTaskButton(visibleCount) {
+            const addTaskBtn = document.getElementById('addTaskBtn');
+            addTaskBtn.disabled = !shouldEnableFilteredTaskButton(visibleCount);
+        }
+        
+        function sortTable(columnIndex) {
+            const table = document.getElementById('studentsTable');
+            const tbody = document.getElementById('studentsTableBody');
+            const rows = Array.from(tbody.querySelectorAll('.student-row'));
+            const headers = table.querySelectorAll('th.sortable');
+            
+            // Toggle sort direction: 0 -> 1 (asc) -> -1 (desc) -> 1 (asc)...
+            if (sortDirection[columnIndex] === 0 || sortDirection[columnIndex] === -1) {
+                sortDirection[columnIndex] = 1;
+            } else {
+                sortDirection[columnIndex] = -1;
+            }
+            
+            // Reset other column sort indicators
+            headers.forEach(header => {
+                header.classList.remove('asc', 'desc');
+            });
+            
+            // Set current column sort indicator
+            headers[columnIndex].classList.add(sortDirection[columnIndex] === 1 ? 'asc' : 'desc');
+            
+            // Sort rows
+            rows.sort((a, b) => {
+                const aText = a.cells[columnIndex].textContent.trim().toLowerCase();
+                const bText = b.cells[columnIndex].textContent.trim().toLowerCase();
+                
+                if (aText < bText) return -1 * sortDirection[columnIndex];
+                if (aText > bText) return 1 * sortDirection[columnIndex];
+                return 0;
+            });
+            
+            // Clear and re-append sorted rows
+            rows.forEach(row => tbody.appendChild(row));
+            
+            updateFilteredStudents();
+        }
+        
+        function openAddTaskForFiltered() {
+            if (currentFilteredStudents.length === 0) {
+                alert('No students selected');
+                return;
+            }
+            
+            // Create a form to submit to the add task page with filtered student IDs
+            const form = document.createElement('form');
+            form.method = 'GET';
+            form.action = '/tasks/add';
+            
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'filtered_students';
+            input.value = currentFilteredStudents.join(',');
+            
+            form.appendChild(input);
+            document.body.appendChild(form);
+            form.submit();
+        }
+    </script>
 </body>
 </html>

@@ -1799,6 +1799,8 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 		// Get all students and cohorts if instructor
 		var students []User
 		cohorts := make(map[string]bool)
+		filteredStudents := r.URL.Query().Get("filtered_students")
+		
 		if user.Role == "instructor" {
 			rows, err := db.Query("SELECT id, username, COALESCE(cohort_name, '') FROM users WHERE role = 'student'")
 			if err == nil {
@@ -1821,13 +1823,15 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		data := struct {
-			User     User
-			Students []User
-			Cohorts  []string
+			User             User
+			Students         []User
+			Cohorts          []string
+			FilteredStudents string
 		}{
-			User:     user,
-			Students: students,
-			Cohorts:  cohortList,
+			User:             user,
+			Students:         students,
+			Cohorts:          cohortList,
+			FilteredStudents: filteredStudents,
 		}
 		templates.ExecuteTemplate(w, "add_task.html", data)
 		return
@@ -1839,12 +1843,94 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 	assignedTo := r.FormValue("assigned_to")
 	taskType := r.FormValue("task_type")
 	resourceURL := r.FormValue("resource_url")
+	filteredStudents := r.FormValue("filtered_students")
 
 	// Students can only create tasks for themselves
 	ownerID := user.ID
 	cohortID := ""
 
 	if user.Role == "instructor" && assignedTo != "" {
+		// Check if assigning to filtered students
+		if assignedTo == "filtered" && filteredStudents != "" {
+			// Parse the comma-separated student IDs
+			studentIDStrs := strings.Split(filteredStudents, ",")
+			var studentIDs []int
+			var args []interface{}
+			
+			for _, idStr := range studentIDStrs {
+				studentID, err := strconv.Atoi(strings.TrimSpace(idStr))
+				if err != nil {
+					log.Printf("Invalid student ID in filtered list: %s", idStr)
+					continue
+				}
+				studentIDs = append(studentIDs, studentID)
+				args = append(args, studentID)
+			}
+			
+			if len(studentIDs) == 0 {
+				http.Error(w, "No valid student IDs provided", http.StatusBadRequest)
+				return
+			}
+			
+			// Build placeholders for IN clause - simpler approach
+			placeholderSlice := make([]string, len(studentIDs))
+			for i := range placeholderSlice {
+				placeholderSlice[i] = "?"
+			}
+			placeholders := strings.Join(placeholderSlice, ",")
+			
+			// Validate all student IDs at once
+			query := fmt.Sprintf("SELECT id FROM users WHERE id IN (%s) AND role = 'student'", placeholders)
+			rows, err := db.Query(query, args...)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Failed to validate student IDs: %v", err), http.StatusInternalServerError)
+				return
+			}
+			defer rows.Close()
+			
+			validStudentIDs := make(map[int]bool)
+			for rows.Next() {
+				var id int
+				if err := rows.Scan(&id); err != nil {
+					log.Printf("Failed to scan student ID: %v", err)
+					continue
+				}
+				validStudentIDs[id] = true
+			}
+			
+			// Check if any invalid IDs were provided
+			invalidCount := 0
+			for _, id := range studentIDs {
+				if !validStudentIDs[id] {
+					invalidCount++
+					log.Printf("Invalid or non-student ID: %d", id)
+				}
+			}
+			
+			if invalidCount > 0 && len(validStudentIDs) == 0 {
+				http.Error(w, "None of the provided IDs are valid students", http.StatusBadRequest)
+				return
+			}
+			
+			// Create tasks for valid students
+			for id := range validStudentIDs {
+				_, err = db.Exec(`
+					INSERT INTO tasks (title, description, due_date, owner_id, created_by, assigned_to, task_type, resource_url, cohort_id)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				`, title, description, dueDate, id, user.ID, "", taskType, resourceURL, "")
+				if err != nil {
+					log.Printf("Failed to create task for student %d: %v", id, err)
+				}
+			}
+			
+			if invalidCount > 0 {
+				log.Printf("Warning: %d invalid student IDs were skipped during task creation", invalidCount)
+			}
+			
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		
 		// Check if assigning to a cohort
 		if len(assignedTo) > 7 && assignedTo[:7] == "cohort:" {
 			cohortID = assignedTo[7:]
