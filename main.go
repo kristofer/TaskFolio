@@ -45,6 +45,17 @@ type Task struct {
 	CohortID       string     // Cohort name for cohort-based assignments
 	InProgressDate *time.Time // Date when task was first moved to in_progress
 	DoneDate       *time.Time // Date when task was moved to done
+	GroupID        *int       // ID of the group this task is assigned to (if any)
+}
+
+type Group struct {
+	ID          int
+	Name        string
+	Description string
+	ProjectURL  string // URL for group project repository
+	IsActive    bool   // Whether the group is currently active
+	CreatedAt   time.Time
+	Students    []int // Student IDs in this group
 }
 
 func initDB() error {
@@ -92,6 +103,35 @@ func initDB() error {
 			done_date DATETIME,
 			FOREIGN KEY (owner_id) REFERENCES users(id),
 			FOREIGN KEY (created_by) REFERENCES users(id)
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create groups table
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS groups (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			description TEXT,
+			project_url TEXT,
+			is_active BOOLEAN DEFAULT 1,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create group_members table for many-to-many relationship
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS group_members (
+			group_id INTEGER NOT NULL,
+			student_id INTEGER NOT NULL,
+			PRIMARY KEY (group_id, student_id),
+			FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
 		)
 	`)
 	if err != nil {
@@ -209,6 +249,19 @@ func migrateDatabase() error {
 			return fmt.Errorf("failed to add done_date column: %v", err)
 		}
 		log.Println("Added done_date column to tasks table")
+	}
+
+	// Check and add group_id column to tasks table
+	var groupIDExists int
+	err = db.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='group_id'
+	`).Scan(&groupIDExists)
+	if err == nil && groupIDExists == 0 {
+		_, err = db.Exec(`ALTER TABLE tasks ADD COLUMN group_id INTEGER REFERENCES groups(id)`)
+		if err != nil {
+			return fmt.Errorf("failed to add group_id column: %v", err)
+		}
+		log.Println("Added group_id column to tasks table")
 	}
 
 	// Migrate task_type CHECK constraint to new values
@@ -695,6 +748,346 @@ func importStudentsHandler(w http.ResponseWriter, r *http.Request) {
     </div>
 </body>
 </html>`)
+}
+
+// groupsHandler displays list of all groups for instructors to manage
+func groupsHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can access this page
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	// Get all groups
+	groups, err := getAllGroups()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	data := struct {
+		User   User
+		Groups []Group
+	}{
+		User:   user,
+		Groups: groups,
+	}
+
+	templates.ExecuteTemplate(w, "groups.html", data)
+}
+
+// addGroupHandler handles creating new groups
+func addGroupHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can add groups
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	if r.Method == "GET" {
+		// Get all students for selection
+		rows, err := db.Query(`
+			SELECT id, username, COALESCE(cohort_name, '')
+			FROM users WHERE role = 'student' ORDER BY username
+		`)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var students []User
+		for rows.Next() {
+			var s User
+			rows.Scan(&s.ID, &s.Username, &s.CohortName)
+			students = append(students, s)
+		}
+
+		data := struct {
+			User     User
+			Students []User
+			Error    string
+		}{
+			User:     user,
+			Students: students,
+		}
+		templates.ExecuteTemplate(w, "add_group.html", data)
+		return
+	}
+
+	// Handle POST - create the group
+	name := r.FormValue("name")
+	description := r.FormValue("description")
+	projectURL := r.FormValue("project_url")
+	isActive := r.FormValue("is_active") == "on"
+	studentIDs := r.Form["student_ids"]
+
+	// Validate required fields
+	if name == "" {
+		// Get students for re-rendering form
+		rows, _ := db.Query(`
+			SELECT id, username, COALESCE(cohort_name, '')
+			FROM users WHERE role = 'student' ORDER BY username
+		`)
+		defer rows.Close()
+
+		var students []User
+		for rows.Next() {
+			var s User
+			rows.Scan(&s.ID, &s.Username, &s.CohortName)
+			students = append(students, s)
+		}
+
+		data := struct {
+			User     User
+			Students []User
+			Error    string
+		}{
+			User:     user,
+			Students: students,
+			Error:    "Group name is required",
+		}
+		templates.ExecuteTemplate(w, "add_group.html", data)
+		return
+	}
+
+	// Start transaction
+	tx, err := db.Begin()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	// Insert the group
+	result, err := tx.Exec(`
+		INSERT INTO groups (name, description, project_url, is_active)
+		VALUES (?, ?, ?, ?)
+	`, name, description, projectURL, isActive)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	groupID, err := result.LastInsertId()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Insert group members
+	for _, studentIDStr := range studentIDs {
+		studentID, err := strconv.Atoi(studentIDStr)
+		if err != nil {
+			continue
+		}
+		_, err = tx.Exec(`
+			INSERT INTO group_members (group_id, student_id)
+			VALUES (?, ?)
+		`, groupID, studentID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Commit transaction
+	if err = tx.Commit(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/groups", http.StatusSeeOther)
+}
+
+// editGroupHandler handles editing group details and members
+func editGroupHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can edit groups
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	groupIDStr := r.URL.Query().Get("id")
+	groupID, err := strconv.Atoi(groupIDStr)
+	if err != nil {
+		http.Error(w, "Invalid group ID", http.StatusBadRequest)
+		return
+	}
+
+	if r.Method == "GET" {
+		group, err := getGroupByID(groupID)
+		if err != nil {
+			http.Error(w, "Group not found", http.StatusNotFound)
+			return
+		}
+
+		// Get all students for selection
+		rows, err := db.Query(`
+			SELECT id, username, COALESCE(cohort_name, '')
+			FROM users WHERE role = 'student' ORDER BY username
+		`)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var students []User
+		for rows.Next() {
+			var s User
+			rows.Scan(&s.ID, &s.Username, &s.CohortName)
+			students = append(students, s)
+		}
+
+		data := struct {
+			User     User
+			Group    Group
+			Students []User
+		}{
+			User:     user,
+			Group:    group,
+			Students: students,
+		}
+		templates.ExecuteTemplate(w, "edit_group.html", data)
+		return
+	}
+
+	// Handle POST - update the group
+	name := r.FormValue("name")
+	description := r.FormValue("description")
+	projectURL := r.FormValue("project_url")
+	isActive := r.FormValue("is_active") == "on"
+	studentIDs := r.Form["student_ids"]
+
+	// Validate required fields
+	if name == "" {
+		http.Error(w, "Group name is required", http.StatusBadRequest)
+		return
+	}
+
+	// Start transaction
+	tx, err := db.Begin()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	// Update the group
+	_, err = tx.Exec(`
+		UPDATE groups
+		SET name = ?, description = ?, project_url = ?, is_active = ?
+		WHERE id = ?
+	`, name, description, projectURL, isActive, groupID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Delete existing group members
+	_, err = tx.Exec(`DELETE FROM group_members WHERE group_id = ?`, groupID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Insert new group members
+	for _, studentIDStr := range studentIDs {
+		studentID, err := strconv.Atoi(studentIDStr)
+		if err != nil {
+			continue
+		}
+		_, err = tx.Exec(`
+			INSERT INTO group_members (group_id, student_id)
+			VALUES (?, ?)
+		`, groupID, studentID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Commit transaction
+	if err = tx.Commit(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/groups", http.StatusSeeOther)
+}
+
+// deleteGroupHandler handles deleting a group
+func deleteGroupHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can delete groups
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	groupIDStr := r.URL.Query().Get("id")
+	groupID, err := strconv.Atoi(groupIDStr)
+	if err != nil {
+		http.Error(w, "Invalid group ID", http.StatusBadRequest)
+		return
+	}
+
+	// Delete the group (group_members will cascade delete)
+	_, err = db.Exec(`DELETE FROM groups WHERE id = ?`, groupID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/groups", http.StatusSeeOther)
 }
 
 // studentProgressHandler shows task completion for a specific student
@@ -1687,6 +2080,10 @@ func main() {
 	http.HandleFunc("/students/import", importStudentsHandler)
 	http.HandleFunc("/students/edit", editStudentHandler)
 	http.HandleFunc("/students/progress", studentProgressHandler)
+	http.HandleFunc("/groups", groupsHandler)
+	http.HandleFunc("/groups/add", addGroupHandler)
+	http.HandleFunc("/groups/edit", editGroupHandler)
+	http.HandleFunc("/groups/delete", deleteGroupHandler)
 	http.HandleFunc("/tasks/stats", taskStatsHandler)
 	http.HandleFunc("/tasks/detail", taskDetailHandler)
 	http.HandleFunc("/instructors", instructorsHandler)
@@ -2187,6 +2584,101 @@ func getUserByID(id int) (User, error) {
 		user.CohortName = cohortName.String
 	}
 	return user, err
+}
+
+// getGroupByID retrieves a group by its ID
+func getGroupByID(id int) (Group, error) {
+	var group Group
+	var projectURL sql.NullString
+	var description sql.NullString
+	
+	err := db.QueryRow(`
+		SELECT id, name, COALESCE(description, ''), COALESCE(project_url, ''), 
+		       COALESCE(is_active, 1), created_at 
+		FROM groups WHERE id = ?
+	`, id).Scan(&group.ID, &group.Name, &description, &projectURL, &group.IsActive, &group.CreatedAt)
+	
+	if err != nil {
+		return group, err
+	}
+	
+	if description.Valid {
+		group.Description = description.String
+	}
+	if projectURL.Valid {
+		group.ProjectURL = projectURL.String
+	}
+	
+	// Get student IDs for this group
+	rows, err := db.Query(`
+		SELECT student_id FROM group_members WHERE group_id = ?
+	`, id)
+	if err != nil {
+		return group, err
+	}
+	defer rows.Close()
+	
+	group.Students = []int{}
+	for rows.Next() {
+		var studentID int
+		if err := rows.Scan(&studentID); err != nil {
+			return group, err
+		}
+		group.Students = append(group.Students, studentID)
+	}
+	
+	return group, nil
+}
+
+// getAllGroups retrieves all groups
+func getAllGroups() ([]Group, error) {
+	rows, err := db.Query(`
+		SELECT id, name, COALESCE(description, ''), COALESCE(project_url, ''), 
+		       COALESCE(is_active, 1), created_at 
+		FROM groups ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	
+	var groups []Group
+	for rows.Next() {
+		var group Group
+		var projectURL sql.NullString
+		var description sql.NullString
+		
+		err := rows.Scan(&group.ID, &group.Name, &description, &projectURL, &group.IsActive, &group.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		
+		if description.Valid {
+			group.Description = description.String
+		}
+		if projectURL.Valid {
+			group.ProjectURL = projectURL.String
+		}
+		
+		// Get student count for this group
+		var count int
+		db.QueryRow(`SELECT COUNT(*) FROM group_members WHERE group_id = ?`, group.ID).Scan(&count)
+		group.Students = make([]int, count) // Just track the count for list view
+		
+		groups = append(groups, group)
+	}
+	
+	return groups, nil
+}
+
+// getGroupNameByID retrieves a group's name by its ID
+func getGroupNameByID(id int) string {
+	var name string
+	err := db.QueryRow(`SELECT name FROM groups WHERE id = ?`, id).Scan(&name)
+	if err != nil {
+		return ""
+	}
+	return name
 }
 
 func getTasks(user User) ([]Task, error) {
