@@ -788,6 +788,107 @@ func groupsHandler(w http.ResponseWriter, r *http.Request) {
 	templates.ExecuteTemplate(w, "groups.html", data)
 }
 
+// groupDetailHandler displays detailed information about a specific group
+func groupDetailHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can access this page
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	// Get group ID from query parameter
+	groupIDStr := r.URL.Query().Get("id")
+	if groupIDStr == "" {
+		http.Error(w, "Group ID is required", http.StatusBadRequest)
+		return
+	}
+
+	groupID, err := strconv.Atoi(groupIDStr)
+	if err != nil {
+		http.Error(w, "Invalid group ID", http.StatusBadRequest)
+		return
+	}
+
+	// Get group details
+	group, err := getGroupByID(groupID)
+	if err != nil {
+		http.Error(w, "Group not found", http.StatusNotFound)
+		return
+	}
+
+	// Get student details for all group members
+	var students []User
+	if len(group.Students) > 0 {
+		placeholders := make([]string, len(group.Students))
+		args := make([]interface{}, len(group.Students))
+		for i, studentID := range group.Students {
+			placeholders[i] = "?"
+			args[i] = studentID
+		}
+		
+		query := fmt.Sprintf(`
+			SELECT id, username, COALESCE(cohort_name, ''), role
+			FROM users WHERE id IN (%s) ORDER BY username
+		`, strings.Join(placeholders, ","))
+		
+		rows, err := db.Query(query, args...)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+		
+		for rows.Next() {
+			var s User
+			rows.Scan(&s.ID, &s.Username, &s.CohortName, &s.Role)
+			students = append(students, s)
+		}
+	}
+
+	// Get tasks assigned to this group
+	var tasks []Task
+	taskRows, err := db.Query(`
+		SELECT DISTINCT id, title, due_date, COALESCE(task_type, '')
+		FROM tasks
+		WHERE group_id = ?
+		ORDER BY created_at DESC
+	`, groupID)
+	if err == nil {
+		defer taskRows.Close()
+		for taskRows.Next() {
+			var t Task
+			taskRows.Scan(&t.ID, &t.Title, &t.DueDate, &t.TaskType)
+			tasks = append(tasks, t)
+		}
+	}
+
+	data := struct {
+		User     User
+		Group    Group
+		Students []User
+		Tasks    []Task
+	}{
+		User:     user,
+		Group:    group,
+		Students: students,
+		Tasks:    tasks,
+	}
+
+	templates.ExecuteTemplate(w, "group_detail.html", data)
+}
+
 // addGroupHandler handles creating new groups
 func addGroupHandler(w http.ResponseWriter, r *http.Request) {
 	session, err := getSession(r)
@@ -2081,6 +2182,7 @@ func main() {
 	http.HandleFunc("/students/edit", editStudentHandler)
 	http.HandleFunc("/students/progress", studentProgressHandler)
 	http.HandleFunc("/groups", groupsHandler)
+	http.HandleFunc("/groups/detail", groupDetailHandler)
 	http.HandleFunc("/groups/add", addGroupHandler)
 	http.HandleFunc("/groups/edit", editGroupHandler)
 	http.HandleFunc("/groups/delete", deleteGroupHandler)
@@ -2237,6 +2339,9 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 		for cohort := range cohorts {
 			cohortList = append(cohortList, cohort)
 		}
+		
+		// Get pre-selected group ID if provided
+		selectedGroupID := r.URL.Query().Get("group_id")
 
 		data := struct {
 			User             User
@@ -2244,12 +2349,14 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 			Cohorts          []string
 			Groups           []Group
 			FilteredStudents string
+			SelectedGroupID  string
 		}{
 			User:             user,
 			Students:         students,
 			Cohorts:          cohortList,
 			Groups:           groups,
 			FilteredStudents: filteredStudents,
+			SelectedGroupID:  selectedGroupID,
 		}
 		templates.ExecuteTemplate(w, "add_task.html", data)
 		return

@@ -183,7 +183,7 @@
                 <tbody>
                     {{range .Groups}}
                     <tr>
-                        <td><strong>{{.Name}}</strong></td>
+                        <td><strong><a href="/groups/detail?id={{.ID}}" style="color: #667eea; text-decoration: none;">{{.Name}}</a></strong></td>
                         <td>{{if .Description}}{{.Description}}{{else}}<span style="color: #999;">No description</span>{{end}}</td>
                         <td>{{len .Students}} student(s)</td>
                         <td>
@@ -194,6 +194,7 @@
                             {{end}}
                         </td>
                         <td>
+                            <a href="/groups/detail?id={{.ID}}" class="btn btn-primary btn-small">View Details</a>
                             <a href="/groups/edit?id={{.ID}}" class="btn btn-primary btn-small">Edit</a>
                             <button onclick="confirmDelete({{.ID}}, '{{.Name}}')" class="btn btn-danger btn-small">Delete</button>
                         </td>
