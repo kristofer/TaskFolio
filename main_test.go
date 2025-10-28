@@ -3712,10 +3712,9 @@ func TestGroupTasksRetrieval(t *testing.T) {
 
 	// Retrieve tasks for this group (simulating group detail page)
 	rows, err := testDB.Query(`
-		SELECT DISTINCT id, title, due_date, COALESCE(task_type, '')
+		SELECT id, title, due_date, COALESCE(task_type, '')
 		FROM tasks
 		WHERE group_id = ?
-		ORDER BY created_at DESC
 	`, groupID)
 	if err != nil {
 		t.Fatalf("Failed to query group tasks: %v", err)
