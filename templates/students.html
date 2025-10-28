@@ -209,7 +209,8 @@
         {{if .Students}}
         <!-- Search Box -->
         <div class="search-container">
-            <input type="text" id="searchBox" class="search-box" placeholder="Search by name or cohort..." onkeyup="filterStudents()">
+            <input type="text" id="searchBox" class="search-box" placeholder="Search by name or cohort..." oninput="filterStudents()" onkeyup="filterStudents()">
+            <span id="filterCount" style="margin-left: 10px; color: #666; font-size: 14px;"></span>
         </div>
         
         <div class="students-table">
@@ -288,6 +289,7 @@
             
             updateFilteredStudents();
             updateAddTaskButton(visibleCount);
+            updateFilterCount(visibleCount);
         }
         
         function updateFilteredStudents() {
@@ -311,6 +313,26 @@
         function updateAddTaskButton(visibleCount) {
             const addTaskBtn = document.getElementById('addTaskBtn');
             addTaskBtn.disabled = !shouldEnableFilteredTaskButton(visibleCount);
+        }
+        
+        function updateFilterCount(visibleCount) {
+            const filterCount = document.getElementById('filterCount');
+            const searchBox = document.getElementById('searchBox');
+            
+            if (searchBox.value.trim() === '') {
+                filterCount.textContent = '';
+            } else if (visibleCount === 0) {
+                filterCount.textContent = 'No students found';
+                filterCount.style.color = '#991b1b';
+            } else if (visibleCount < totalStudentCount) {
+                filterCount.textContent = `Showing ${visibleCount} of ${totalStudentCount} students`;
+                filterCount.style.color = '#2c5f7c';
+                filterCount.style.fontWeight = '600';
+            } else {
+                filterCount.textContent = `Showing all ${totalStudentCount} students`;
+                filterCount.style.color = '#666';
+                filterCount.style.fontWeight = 'normal';
+            }
         }
         
         function sortTable(columnIndex) {
