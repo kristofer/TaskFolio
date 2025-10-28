@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -2689,5 +2690,334 @@ func TestURLNormalization(t *testing.T) {
 		if result != tc.expected {
 			t.Errorf("normalizeURL(%q) = %q, expected %q", tc.input, result, tc.expected)
 		}
+	}
+}
+
+// TestAssignTaskToFilteredStudents tests the filtered student assignment feature
+func TestAssignTaskToFilteredStudents(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create tables
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL,
+			role TEXT NOT NULL,
+			cohort_name TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	_, err = testDB.Exec(`
+		CREATE TABLE tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			description TEXT,
+			due_date TEXT,
+			status TEXT DEFAULT 'pending',
+			owner_id INTEGER NOT NULL,
+			created_by INTEGER NOT NULL,
+			assigned_to TEXT,
+			task_type TEXT,
+			resource_url TEXT,
+			cohort_id TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create tasks table: %v", err)
+	}
+
+	// Create an instructor
+	result, err := testDB.Exec(
+		"INSERT INTO users (username, password, role, cohort_name) VALUES (?, ?, ?, ?)",
+		"instructor1", "password", "instructor", "",
+	)
+	if err != nil {
+		t.Fatalf("Failed to create instructor: %v", err)
+	}
+	instructorID, _ := result.LastInsertId()
+
+	// Create multiple students
+	student1Result, err := testDB.Exec(
+		"INSERT INTO users (username, password, role, cohort_name) VALUES (?, ?, ?, ?)",
+		"student1", "password", "student", "Java11.2",
+	)
+	if err != nil {
+		t.Fatalf("Failed to create student1: %v", err)
+	}
+	student1ID, _ := student1Result.LastInsertId()
+
+	student2Result, err := testDB.Exec(
+		"INSERT INTO users (username, password, role, cohort_name) VALUES (?, ?, ?, ?)",
+		"student2", "password", "student", "Java11.2",
+	)
+	if err != nil {
+		t.Fatalf("Failed to create student2: %v", err)
+	}
+	student2ID, _ := student2Result.LastInsertId()
+
+	student3Result, err := testDB.Exec(
+		"INSERT INTO users (username, password, role, cohort_name) VALUES (?, ?, ?, ?)",
+		"student3", "password", "student", "Data6.2",
+	)
+	if err != nil {
+		t.Fatalf("Failed to create student3: %v", err)
+	}
+	student3ID, _ := student3Result.LastInsertId()
+
+	// Test Case 1: Assign task to two filtered students (student1 and student2)
+	filteredStudents := fmt.Sprintf("%d,%d", student1ID, student2ID)
+	studentIDStrs := strings.Split(filteredStudents, ",")
+	var studentIDs []int
+	var args []interface{}
+
+	for _, idStr := range studentIDStrs {
+		studentID, err := strconv.Atoi(strings.TrimSpace(idStr))
+		if err != nil {
+			t.Fatalf("Invalid student ID: %s", idStr)
+		}
+		studentIDs = append(studentIDs, studentID)
+		args = append(args, studentID)
+	}
+
+	// Build placeholders for IN clause
+	placeholderSlice := make([]string, len(studentIDs))
+	for i := range placeholderSlice {
+		placeholderSlice[i] = "?"
+	}
+	placeholders := strings.Join(placeholderSlice, ",")
+
+	// Validate student IDs
+	query := fmt.Sprintf("SELECT id FROM users WHERE id IN (%s) AND role = 'student'", placeholders)
+	rows, err := testDB.Query(query, args...)
+	if err != nil {
+		t.Fatalf("Failed to validate student IDs: %v", err)
+	}
+	defer rows.Close()
+
+	validStudentIDs := make(map[int]bool)
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			t.Fatalf("Failed to scan student ID: %v", err)
+		}
+		validStudentIDs[id] = true
+	}
+
+	// Verify both students are valid
+	if len(validStudentIDs) != 2 {
+		t.Errorf("Expected 2 valid students, got %d", len(validStudentIDs))
+	}
+
+	// Create tasks for valid students
+	taskTitle := "Filtered Assignment Test"
+	for id := range validStudentIDs {
+		_, err = testDB.Exec(`
+			INSERT INTO tasks (title, description, due_date, owner_id, created_by, assigned_to, task_type, resource_url, cohort_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, taskTitle, "Test description", "2025-12-31", id, instructorID, "", "", "", "")
+		if err != nil {
+			t.Fatalf("Failed to create task for student %d: %v", id, err)
+		}
+	}
+
+	// Verify tasks were created for the correct students
+	var taskCount int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE title = ? AND created_by = ?", taskTitle, instructorID).Scan(&taskCount)
+	if err != nil {
+		t.Fatalf("Failed to count tasks: %v", err)
+	}
+	if taskCount != 2 {
+		t.Errorf("Expected 2 tasks to be created, got %d", taskCount)
+	}
+
+	// Verify student1 has the task
+	var student1TaskCount int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE title = ? AND owner_id = ?", taskTitle, student1ID).Scan(&student1TaskCount)
+	if err != nil {
+		t.Fatalf("Failed to count student1 tasks: %v", err)
+	}
+	if student1TaskCount != 1 {
+		t.Errorf("Expected student1 to have 1 task, got %d", student1TaskCount)
+	}
+
+	// Verify student2 has the task
+	var student2TaskCount int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE title = ? AND owner_id = ?", taskTitle, student2ID).Scan(&student2TaskCount)
+	if err != nil {
+		t.Fatalf("Failed to count student2 tasks: %v", err)
+	}
+	if student2TaskCount != 1 {
+		t.Errorf("Expected student2 to have 1 task, got %d", student2TaskCount)
+	}
+
+	// Verify student3 does NOT have the task
+	var student3TaskCount int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE title = ? AND owner_id = ?", taskTitle, student3ID).Scan(&student3TaskCount)
+	if err != nil {
+		t.Fatalf("Failed to count student3 tasks: %v", err)
+	}
+	if student3TaskCount != 0 {
+		t.Errorf("Expected student3 to have 0 tasks, got %d", student3TaskCount)
+	}
+
+	// Test Case 2: Assign task to single filtered student
+	taskTitle2 := "Single Filtered Assignment Test"
+	studentIDs2 := []int{int(student3ID)}
+
+	for _, id := range studentIDs2 {
+		_, err = testDB.Exec(`
+			INSERT INTO tasks (title, description, due_date, owner_id, created_by, assigned_to, task_type, resource_url, cohort_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, taskTitle2, "Test description", "2025-12-31", id, instructorID, "", "", "", "")
+		if err != nil {
+			t.Fatalf("Failed to create task for student %d: %v", id, err)
+		}
+	}
+
+	// Verify student3 has the new task
+	var student3Task2Count int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE title = ? AND owner_id = ?", taskTitle2, student3ID).Scan(&student3Task2Count)
+	if err != nil {
+		t.Fatalf("Failed to count student3 tasks for second test: %v", err)
+	}
+	if student3Task2Count != 1 {
+		t.Errorf("Expected student3 to have 1 task for second test, got %d", student3Task2Count)
+	}
+}
+
+// TestFilteredAssignmentWithInvalidIDs tests that invalid student IDs are handled correctly
+func TestFilteredAssignmentWithInvalidIDs(t *testing.T) {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create tables
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL,
+			role TEXT NOT NULL,
+			cohort_name TEXT
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	_, err = testDB.Exec(`
+		CREATE TABLE tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			description TEXT,
+			due_date TEXT,
+			status TEXT DEFAULT 'pending',
+			owner_id INTEGER NOT NULL,
+			created_by INTEGER NOT NULL,
+			assigned_to TEXT,
+			task_type TEXT,
+			resource_url TEXT,
+			cohort_id TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create tasks table: %v", err)
+	}
+
+	// Create an instructor
+	result, err := testDB.Exec(
+		"INSERT INTO users (username, password, role, cohort_name) VALUES (?, ?, ?, ?)",
+		"instructor1", "password", "instructor", "",
+	)
+	if err != nil {
+		t.Fatalf("Failed to create instructor: %v", err)
+	}
+	instructorID, _ := result.LastInsertId()
+
+	// Create one valid student
+	studentResult, err := testDB.Exec(
+		"INSERT INTO users (username, password, role, cohort_name) VALUES (?, ?, ?, ?)",
+		"student1", "password", "student", "Java11.2",
+	)
+	if err != nil {
+		t.Fatalf("Failed to create student: %v", err)
+	}
+	studentID, _ := studentResult.LastInsertId()
+
+	// Test with mix of valid and invalid IDs
+	filteredStudents := fmt.Sprintf("%d,999,1000", studentID) // Include invalid IDs
+	studentIDStrs := strings.Split(filteredStudents, ",")
+	var studentIDs []int
+	var args []interface{}
+
+	for _, idStr := range studentIDStrs {
+		id, err := strconv.Atoi(strings.TrimSpace(idStr))
+		if err != nil {
+			continue // Skip invalid strings
+		}
+		studentIDs = append(studentIDs, id)
+		args = append(args, id)
+	}
+
+	// Validate student IDs
+	placeholderSlice := make([]string, len(studentIDs))
+	for i := range placeholderSlice {
+		placeholderSlice[i] = "?"
+	}
+	placeholders := strings.Join(placeholderSlice, ",")
+
+	query := fmt.Sprintf("SELECT id FROM users WHERE id IN (%s) AND role = 'student'", placeholders)
+	rows, err := testDB.Query(query, args...)
+	if err != nil {
+		t.Fatalf("Failed to validate student IDs: %v", err)
+	}
+	defer rows.Close()
+
+	validStudentIDs := make(map[int]bool)
+	for rows.Next() {
+		var id int
+		if err := rows.Scan(&id); err != nil {
+			continue
+		}
+		validStudentIDs[id] = true
+	}
+
+	// Should only have 1 valid student (the invalid IDs should be filtered out)
+	if len(validStudentIDs) != 1 {
+		t.Errorf("Expected 1 valid student, got %d", len(validStudentIDs))
+	}
+
+	// Create task only for valid students
+	taskTitle := "Mixed Valid/Invalid IDs Test"
+	for id := range validStudentIDs {
+		_, err = testDB.Exec(`
+			INSERT INTO tasks (title, description, due_date, owner_id, created_by, assigned_to, task_type, resource_url, cohort_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, taskTitle, "Test description", "2025-12-31", id, instructorID, "", "", "", "")
+		if err != nil {
+			t.Fatalf("Failed to create task: %v", err)
+		}
+	}
+
+	// Verify only 1 task was created (for the valid student)
+	var taskCount int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE title = ?", taskTitle).Scan(&taskCount)
+	if err != nil {
+		t.Fatalf("Failed to count tasks: %v", err)
+	}
+	if taskCount != 1 {
+		t.Errorf("Expected 1 task to be created, got %d", taskCount)
 	}
 }
