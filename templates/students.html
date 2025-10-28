@@ -302,16 +302,15 @@
             });
         }
         
+        function shouldEnableFilteredTaskButton(visibleCount) {
+            const searchBox = document.getElementById('searchBox');
+            // Enable button only when search is active and results are shown (but not all students)
+            return searchBox.value.trim() !== '' && visibleCount > 0 && visibleCount < totalStudentCount;
+        }
+        
         function updateAddTaskButton(visibleCount) {
             const addTaskBtn = document.getElementById('addTaskBtn');
-            const searchBox = document.getElementById('searchBox');
-            
-            // Enable button only when search is active and results are shown
-            if (searchBox.value.trim() !== '' && visibleCount > 0 && visibleCount < totalStudentCount) {
-                addTaskBtn.disabled = false;
-            } else {
-                addTaskBtn.disabled = true;
-            }
+            addTaskBtn.disabled = !shouldEnableFilteredTaskButton(visibleCount);
         }
         
         function sortTable(columnIndex) {
@@ -320,11 +319,15 @@
             const rows = Array.from(tbody.querySelectorAll('.student-row'));
             const headers = table.querySelectorAll('th.sortable');
             
-            // Update sort direction
-            sortDirection[columnIndex] = sortDirection[columnIndex] === 1 ? -1 : 1;
+            // Toggle sort direction: 0 -> 1 (asc) -> -1 (desc) -> 1 (asc)...
+            if (sortDirection[columnIndex] === 0 || sortDirection[columnIndex] === -1) {
+                sortDirection[columnIndex] = 1;
+            } else {
+                sortDirection[columnIndex] = -1;
+            }
             
             // Reset other column sort indicators
-            headers.forEach((header, idx) => {
+            headers.forEach(header => {
                 header.classList.remove('asc', 'desc');
             });
             
