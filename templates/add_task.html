@@ -130,6 +130,10 @@
             {{end}}
             
             <form method="POST" action="/tasks/add">
+                {{if .FilteredStudents}}
+                <input type="hidden" name="filtered_students" value="{{.FilteredStudents}}">
+                {{end}}
+                
                 <div class="form-group">
                     <label for="title">Task Title *</label>
                     <input type="text" id="title" name="title" required>
@@ -168,6 +172,9 @@
                 <div class="form-group">
                     <label for="assigned_to">Assign To</label>
                     <select id="assigned_to" name="assigned_to">
+                        {{if .FilteredStudents}}
+                        <option value="filtered" selected>Filtered Students</option>
+                        {{else}}
                         <option value="">-- Self --</option>
                         <option value="all">All Students</option>
                         {{range .Cohorts}}
@@ -175,6 +182,7 @@
                         {{end}}
                         {{range .Students}}
                         <option value="{{.ID}}">{{.Username}}{{if .CohortName}} ({{.CohortName}}){{end}}</option>
+                        {{end}}
                         {{end}}
                     </select>
                 </div>

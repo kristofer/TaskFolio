@@ -1799,6 +1799,8 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 		// Get all students and cohorts if instructor
 		var students []User
 		cohorts := make(map[string]bool)
+		filteredStudents := r.URL.Query().Get("filtered_students")
+		
 		if user.Role == "instructor" {
 			rows, err := db.Query("SELECT id, username, COALESCE(cohort_name, '') FROM users WHERE role = 'student'")
 			if err == nil {
@@ -1821,13 +1823,15 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		data := struct {
-			User     User
-			Students []User
-			Cohorts  []string
+			User             User
+			Students         []User
+			Cohorts          []string
+			FilteredStudents string
 		}{
-			User:     user,
-			Students: students,
-			Cohorts:  cohortList,
+			User:             user,
+			Students:         students,
+			Cohorts:          cohortList,
+			FilteredStudents: filteredStudents,
 		}
 		templates.ExecuteTemplate(w, "add_task.html", data)
 		return
@@ -1839,12 +1843,45 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 	assignedTo := r.FormValue("assigned_to")
 	taskType := r.FormValue("task_type")
 	resourceURL := r.FormValue("resource_url")
+	filteredStudents := r.FormValue("filtered_students")
 
 	// Students can only create tasks for themselves
 	ownerID := user.ID
 	cohortID := ""
 
 	if user.Role == "instructor" && assignedTo != "" {
+		// Check if assigning to filtered students
+		if assignedTo == "filtered" && filteredStudents != "" {
+			// Parse the comma-separated student IDs
+			studentIDStrs := strings.Split(filteredStudents, ",")
+			for _, idStr := range studentIDStrs {
+				studentID, err := strconv.Atoi(strings.TrimSpace(idStr))
+				if err != nil {
+					log.Printf("Invalid student ID in filtered list: %s", idStr)
+					continue
+				}
+				
+				// Validate that the target user is a student
+				var targetRole string
+				err = db.QueryRow("SELECT role FROM users WHERE id = ?", studentID).Scan(&targetRole)
+				if err != nil || targetRole != "student" {
+					log.Printf("Skipping non-student ID: %d", studentID)
+					continue
+				}
+				
+				// Create task for this student
+				_, err = db.Exec(`
+					INSERT INTO tasks (title, description, due_date, owner_id, created_by, assigned_to, task_type, resource_url, cohort_id)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+				`, title, description, dueDate, studentID, user.ID, "", taskType, resourceURL, "")
+				if err != nil {
+					log.Printf("Failed to create task for student %d: %v", studentID, err)
+				}
+			}
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		
 		// Check if assigning to a cohort
 		if len(assignedTo) > 7 && assignedTo[:7] == "cohort:" {
 			cohortID = assignedTo[7:]
