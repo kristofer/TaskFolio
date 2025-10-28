@@ -1656,6 +1656,19 @@ func main() {
 				return fmt.Sprintf("%v", v)
 			}
 		},
+		"normalizeURL": func(url string) string {
+			// Normalize URLs by adding https:// if no protocol is present
+			url = strings.TrimSpace(url)
+			if url == "" {
+				return ""
+			}
+			// Check if URL already has a protocol (http:// or https://)
+			if !strings.HasPrefix(strings.ToLower(url), "http://") &&
+				!strings.HasPrefix(strings.ToLower(url), "https://") {
+				return "https://" + url
+			}
+			return url
+		},
 	}
 	templates = template.Must(template.New("").Funcs(funcMap).ParseGlob("templates/*.html"))
 

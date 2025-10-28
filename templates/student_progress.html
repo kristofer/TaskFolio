@@ -420,6 +420,19 @@
             {{end}}
         ];
 
+        // Helper function to normalize URLs - adds https:// if protocol is missing
+        function normalizeURL(url) {
+            if (!url || url.trim() === '') {
+                return '';
+            }
+            url = url.trim();
+            // Check if URL already has a protocol
+            if (!url.match(/^https?:\/\//i)) {
+                return 'https://' + url;
+            }
+            return url;
+        }
+
         // Render tasks to kanban board (read-only, no drag-and-drop)
         function renderTasks() {
             // Clear all lists
@@ -492,11 +505,14 @@
             card.appendChild(metaDiv);
 
             if (task.resourceURL) {
-                const urlDiv = document.createElement('div');
-                urlDiv.className = 'task-card-url';
-                urlDiv.title = task.resourceURL;
-                urlDiv.textContent = task.resourceURL;
-                card.appendChild(urlDiv);
+                const urlLink = document.createElement('a');
+                urlLink.href = normalizeURL(task.resourceURL);
+                urlLink.target = '_blank';
+                urlLink.className = 'task-card-url';
+                urlLink.title = task.resourceURL;
+                urlLink.textContent = task.resourceURL;
+                urlLink.style.textDecoration = 'none';
+                card.appendChild(urlLink);
             }
 
             if (task.taskType) {

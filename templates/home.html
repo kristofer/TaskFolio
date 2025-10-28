@@ -618,6 +618,19 @@
             {{end}}
         ];
 
+        // Helper function to normalize URLs - adds https:// if protocol is missing
+        function normalizeURL(url) {
+            if (!url || url.trim() === '') {
+                return '';
+            }
+            url = url.trim();
+            // Check if URL already has a protocol
+            if (!url.match(/^https?:\/\//i)) {
+                return 'https://' + url;
+            }
+            return url;
+        }
+
         // Modal functions
         function showTaskDetails(taskId) {
             const task = tasks.find(t => t.id == taskId);
@@ -647,7 +660,7 @@
             if (task.resourceURL) {
                 document.getElementById('modalResourceURLField').style.display = 'block';
                 const urlLink = document.createElement('a');
-                urlLink.href = task.resourceURL;
+                urlLink.href = normalizeURL(task.resourceURL);
                 urlLink.target = '_blank';
                 urlLink.textContent = task.resourceURL;
                 document.getElementById('modalResourceURL').innerHTML = '';
@@ -759,11 +772,18 @@
             card.appendChild(metaDiv);
 
             if (task.resourceURL) {
-                const urlDiv = document.createElement('div');
-                urlDiv.className = 'task-card-url';
-                urlDiv.title = task.resourceURL;
-                urlDiv.textContent = task.resourceURL;
-                card.appendChild(urlDiv);
+                const urlLink = document.createElement('a');
+                urlLink.href = normalizeURL(task.resourceURL);
+                urlLink.target = '_blank';
+                urlLink.className = 'task-card-url';
+                urlLink.title = task.resourceURL;
+                urlLink.textContent = task.resourceURL;
+                urlLink.style.textDecoration = 'none';
+                // Prevent drag when clicking the link
+                urlLink.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                });
+                card.appendChild(urlLink);
             }
 
             if (task.taskType) {

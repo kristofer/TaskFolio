@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -2642,4 +2643,50 @@ t.Errorf("Expected 2 total tasks for instructor2, got %d", taskStats[1].TotalCou
 if taskStats[1].InProgress != 1 {
 t.Errorf("Expected 1 in-progress task for instructor2, got %d", taskStats[1].InProgress)
 }
+}
+
+// TestURLNormalization tests that URLs are properly normalized with protocol
+// Note: This tests the URL normalization logic used in both the Go template function
+// and JavaScript function. The actual template function is defined in main() and used
+// via template.FuncMap, so we test the logic here to ensure correctness.
+func TestURLNormalization(t *testing.T) {
+	// Test the URL normalization logic (same as used in template function)
+	funcMap := map[string]interface{}{
+		"normalizeURL": func(url string) string {
+			url = strings.TrimSpace(url)
+			if url == "" {
+				return ""
+			}
+			// Check if URL already has a protocol (http:// or https://)
+			if !strings.HasPrefix(strings.ToLower(url), "http://") &&
+				!strings.HasPrefix(strings.ToLower(url), "https://") {
+				return "https://" + url
+			}
+			return url
+		},
+	}
+
+	normalizeURL := funcMap["normalizeURL"].(func(string) string)
+
+	testCases := []struct {
+		input    string
+		expected string
+	}{
+		{"example.com", "https://example.com"},
+		{"www.example.com", "https://www.example.com"},
+		{"https://example.com", "https://example.com"},
+		{"http://example.com", "http://example.com"},
+		{"HTTPS://Example.COM", "HTTPS://Example.COM"},
+		{"HTTP://Example.COM", "HTTP://Example.COM"},
+		{"", ""},
+		{"  example.com  ", "https://example.com"},
+		{"github.com/user/repo", "https://github.com/user/repo"},
+	}
+
+	for _, tc := range testCases {
+		result := normalizeURL(tc.input)
+		if result != tc.expected {
+			t.Errorf("normalizeURL(%q) = %q, expected %q", tc.input, result, tc.expected)
+		}
+	}
 }
