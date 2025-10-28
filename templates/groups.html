@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Groups - Tasking</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #2C5F7C 0%, #5FA896 100%);
+            color: white;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        h1 {
+            font-size: 24px;
+        }
+        .btn {
+            padding: 8px 16px;
+            background: white;
+            color: #667eea;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: 600;
+            font-size: 14px;
+            transition: opacity 0.3s;
+            border: none;
+            cursor: pointer;
+            display: inline-block;
+        }
+        .btn:hover {
+            opacity: 0.9;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+        h2 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+        .groups-table {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        thead {
+            background: #667eea;
+            color: white;
+        }
+        th, td {
+            padding: 15px;
+            text-align: left;
+        }
+        tbody tr {
+            border-bottom: 1px solid #f0f0f0;
+            transition: background-color 0.2s;
+        }
+        tbody tr:hover {
+            background: #f9f9f9;
+        }
+        .badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .badge-active {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .badge-inactive {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+        .actions-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 30px;
+            border-radius: 10px;
+            width: 400px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        .modal-header {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .modal-body {
+            margin-bottom: 20px;
+            color: #666;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1>Tasking - Manage Groups</h1>
+            <a href="/students" class="btn">← Back to Students</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="actions-bar">
+            <h2>Project Groups</h2>
+            <a href="/groups/add" class="btn btn-primary">+ Create New Group</a>
+        </div>
+        
+        {{if .Groups}}
+        <div class="groups-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Group Name</th>
+                        <th>Description</th>
+                        <th>Members</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Groups}}
+                    <tr>
+                        <td><strong>{{.Name}}</strong></td>
+                        <td>{{if .Description}}{{.Description}}{{else}}<span style="color: #999;">No description</span>{{end}}</td>
+                        <td>{{len .Students}} student(s)</td>
+                        <td>
+                            {{if .IsActive}}
+                            <span class="badge badge-active">Active</span>
+                            {{else}}
+                            <span class="badge badge-inactive">Inactive</span>
+                            {{end}}
+                        </td>
+                        <td>
+                            <a href="/groups/edit?id={{.ID}}" class="btn btn-primary btn-small">Edit</a>
+                            <button onclick="confirmDelete({{.ID}}, '{{.Name}}')" class="btn btn-danger btn-small">Delete</button>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <div class="empty-state">
+            <h2>No groups created yet</h2>
+            <p>Create your first project group to get started.</p>
+            <br>
+            <a href="/groups/add" class="btn btn-primary">+ Create New Group</a>
+        </div>
+        {{end}}
+    </div>
+    
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">Confirm Delete</div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete the group "<strong id="groupName"></strong>"?</p>
+                <p style="margin-top: 10px; color: #ef4444;">This action cannot be undone.</p>
+            </div>
+            <div class="modal-actions">
+                <button onclick="closeDeleteModal()" class="btn">Cancel</button>
+                <button onclick="deleteGroup()" class="btn btn-danger">Delete Group</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let deleteGroupId = null;
+        
+        function confirmDelete(groupId, groupName) {
+            deleteGroupId = groupId;
+            document.getElementById('groupName').textContent = groupName;
+            document.getElementById('deleteModal').style.display = 'block';
+        }
+        
+        function closeDeleteModal() {
+            document.getElementById('deleteModal').style.display = 'none';
+            deleteGroupId = null;
+        }
+        
+        function deleteGroup() {
+            if (deleteGroupId) {
+                window.location.href = '/groups/delete?id=' + deleteGroupId;
+            }
+        }
+        
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('deleteModal');
+            if (event.target == modal) {
+                closeDeleteModal();
+            }
+        }
+    </script>
+</body>
+</html>

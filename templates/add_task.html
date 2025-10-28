@@ -180,6 +180,13 @@
                         {{range .Cohorts}}
                         <option value="cohort:{{.}}">Cohort: {{.}}</option>
                         {{end}}
+                        {{if .Groups}}
+                        <optgroup label="Groups">
+                            {{range .Groups}}
+                            <option value="group:{{.ID}}">Group: {{.Name}}{{if not .IsActive}} (Inactive){{end}}</option>
+                            {{end}}
+                        </optgroup>
+                        {{end}}
                         {{range .Students}}
                         <option value="{{.ID}}">{{.Username}}{{if .CohortName}} ({{.CohortName}}){{end}}</option>
                         {{end}}
