@@ -299,8 +299,8 @@
             
             {{if .ResourceURL}}
             <div style="margin-top: 15px;">
-                <a href="{{.ResourceURL}}" target="_blank" style="color: #667eea; text-decoration: none; font-weight: 600;">
-                    🔗 View Resource
+                <a href="{{normalizeURL .ResourceURL}}" target="_blank" style="color: #667eea; text-decoration: none; font-weight: 600;">
+                    🔗 View Resource: {{.ResourceURL}}
                 </a>
             </div>
             {{end}}
