@@ -2119,12 +2119,27 @@ func homeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create a struct to hold task with group name
+	type TaskWithGroup struct {
+		Task
+		GroupName string
+	}
+
+	var tasksWithGroups []TaskWithGroup
+	for _, task := range tasks {
+		twg := TaskWithGroup{Task: task}
+		if task.GroupID != nil {
+			twg.GroupName = getGroupNameByID(*task.GroupID)
+		}
+		tasksWithGroups = append(tasksWithGroups, twg)
+	}
+
 	data := struct {
 		User  User
-		Tasks []Task
+		Tasks []TaskWithGroup
 	}{
 		User:  user,
-		Tasks: tasks,
+		Tasks: tasksWithGroups,
 	}
 
 	templates.ExecuteTemplate(w, "home.html", data)
@@ -2195,6 +2210,7 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		// Get all students and cohorts if instructor
 		var students []User
+		var groups []Group
 		cohorts := make(map[string]bool)
 		filteredStudents := r.URL.Query().Get("filtered_students")
 		
@@ -2211,6 +2227,9 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
+			
+			// Get all active groups
+			groups, _ = getAllGroups()
 		}
 
 		// Convert cohorts map to slice
@@ -2223,11 +2242,13 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 			User             User
 			Students         []User
 			Cohorts          []string
+			Groups           []Group
 			FilteredStudents string
 		}{
 			User:             user,
 			Students:         students,
 			Cohorts:          cohortList,
+			Groups:           groups,
 			FilteredStudents: filteredStudents,
 		}
 		templates.ExecuteTemplate(w, "add_task.html", data)
@@ -2316,9 +2337,9 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 			// Create tasks for valid students
 			for id := range validStudentIDs {
 				_, err = db.Exec(`
-					INSERT INTO tasks (title, description, due_date, owner_id, created_by, assigned_to, task_type, resource_url, cohort_id)
-					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-				`, title, description, dueDate, id, user.ID, "", taskType, resourceURL, "")
+					INSERT INTO tasks (title, description, due_date, owner_id, created_by, assigned_to, task_type, resource_url, cohort_id, group_id)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				`, title, description, dueDate, id, user.ID, "", taskType, resourceURL, "", nil)
 				if err != nil {
 					log.Printf("Failed to create task for student %d: %v", id, err)
 				}
@@ -2326,6 +2347,37 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 			
 			if invalidCount > 0 {
 				log.Printf("Warning: %d invalid student IDs were skipped during task creation", invalidCount)
+			}
+			
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		
+		// Check if assigning to a group
+		if len(assignedTo) > 6 && assignedTo[:6] == "group:" {
+			groupIDStr := assignedTo[6:]
+			groupID, err := strconv.Atoi(groupIDStr)
+			if err != nil {
+				http.Error(w, "Invalid group ID", http.StatusBadRequest)
+				return
+			}
+			
+			// Get group members
+			group, err := getGroupByID(groupID)
+			if err != nil {
+				http.Error(w, "Group not found", http.StatusNotFound)
+				return
+			}
+			
+			// Create tasks for each group member
+			for _, studentID := range group.Students {
+				_, err := db.Exec(`
+					INSERT INTO tasks (title, description, due_date, owner_id, created_by, assigned_to, task_type, resource_url, cohort_id, group_id)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				`, title, description, dueDate, studentID, user.ID, "", taskType, resourceURL, "", groupID)
+				if err != nil {
+					log.Printf("Failed to create task for student %d in group %d: %v", studentID, groupID, err)
+				}
 			}
 			
 			http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -2373,9 +2425,9 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 		// Now create tasks for each student
 		for _, studentID := range studentIDs {
 			_, err := db.Exec(`
-				INSERT INTO tasks (title, description, due_date, owner_id, created_by, assigned_to, task_type, resource_url, cohort_id)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-			`, title, description, dueDate, studentID, user.ID, "", taskType, resourceURL, cohortID)
+				INSERT INTO tasks (title, description, due_date, owner_id, created_by, assigned_to, task_type, resource_url, cohort_id, group_id)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`, title, description, dueDate, studentID, user.ID, "", taskType, resourceURL, cohortID, nil)
 			if err != nil {
 				log.Printf("Failed to create task for student %d: %v", studentID, err)
 			}
@@ -2402,18 +2454,18 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 		// Now create tasks for each student
 		for _, studentID := range studentIDs {
 			_, err := db.Exec(`
-				INSERT INTO tasks (title, description, due_date, owner_id, created_by, assigned_to, task_type, resource_url, cohort_id)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-			`, title, description, dueDate, studentID, user.ID, "", taskType, resourceURL, "")
+				INSERT INTO tasks (title, description, due_date, owner_id, created_by, assigned_to, task_type, resource_url, cohort_id, group_id)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`, title, description, dueDate, studentID, user.ID, "", taskType, resourceURL, "", nil)
 			if err != nil {
 				log.Printf("Failed to create task for student %d: %v", studentID, err)
 			}
 		}
 	} else {
 		_, err = db.Exec(`
-			INSERT INTO tasks (title, description, due_date, owner_id, created_by, assigned_to, task_type, resource_url, cohort_id)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`, title, description, dueDate, ownerID, user.ID, assignedTo, taskType, resourceURL, cohortID)
+			INSERT INTO tasks (title, description, due_date, owner_id, created_by, assigned_to, task_type, resource_url, cohort_id, group_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`, title, description, dueDate, ownerID, user.ID, assignedTo, taskType, resourceURL, cohortID, nil)
 
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -2691,7 +2743,7 @@ func getTasks(user User) ([]Task, error) {
 		rows, err = db.Query(`
 			SELECT id, title, description, due_date, status, owner_id, created_by, created_at,
 			       COALESCE(task_type, ''), COALESCE(resource_url, ''), COALESCE(cohort_id, ''),
-			       in_progress_date, done_date
+			       in_progress_date, done_date, group_id
 			FROM tasks
 			WHERE created_by = ? AND owner_id = ?
 			ORDER BY created_at DESC
@@ -2701,7 +2753,7 @@ func getTasks(user User) ([]Task, error) {
 		rows, err = db.Query(`
 			SELECT id, title, description, due_date, status, owner_id, created_by, created_at,
 			       COALESCE(task_type, ''), COALESCE(resource_url, ''), COALESCE(cohort_id, ''),
-			       in_progress_date, done_date
+			       in_progress_date, done_date, group_id
 			FROM tasks
 			WHERE owner_id = ?
 			ORDER BY created_at DESC
@@ -2716,9 +2768,10 @@ func getTasks(user User) ([]Task, error) {
 	for rows.Next() {
 		var task Task
 		var inProgressDate, doneDate sql.NullTime
+		var groupID sql.NullInt64
 		err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate,
 			&task.Status, &task.OwnerID, &task.CreatedBy, &task.CreatedAt,
-			&task.TaskType, &task.ResourceURL, &task.CohortID, &inProgressDate, &doneDate)
+			&task.TaskType, &task.ResourceURL, &task.CohortID, &inProgressDate, &doneDate, &groupID)
 		if err != nil {
 			return nil, err
 		}
@@ -2727,6 +2780,10 @@ func getTasks(user User) ([]Task, error) {
 		}
 		if doneDate.Valid {
 			task.DoneDate = &doneDate.Time
+		}
+		if groupID.Valid {
+			gid := int(groupID.Int64)
+			task.GroupID = &gid
 		}
 		tasks = append(tasks, task)
 	}

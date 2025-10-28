@@ -195,6 +195,20 @@
         .type-resume { background: #e0e7ff; color: #4338ca; }
         .type-prodev { background: #fce7f3; color: #831843; }
         .type-demo-presentation { background: #fed7aa; color: #c2410c; }
+        
+        .group-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            background: #e0f2fe;
+            color: #0369a1;
+            margin-top: 6px;
+        }
+        .group-badge::before {
+            content: '👥 ';
+        }
 
         /* Instructor View - List Style */
         .tasks-grid {
@@ -595,6 +609,10 @@
                     <div class="modal-field-label">Resource URL</div>
                     <div class="modal-field-value" id="modalResourceURL"></div>
                 </div>
+                <div class="modal-field" id="modalGroupField" style="display: none;">
+                    <div class="modal-field-label">Group</div>
+                    <div class="modal-field-value" id="modalGroup"></div>
+                </div>
                 <div class="modal-field">
                     <div class="modal-field-label">Created Date</div>
                     <div class="modal-field-value" id="modalCreatedAt"></div>
@@ -615,6 +633,7 @@
                 status: "{{.Status}}",
                 taskType: "{{.TaskType}}",
                 resourceURL: "{{.ResourceURL}}",
+                groupName: "{{.GroupName}}",
                 createdAt: "{{.CreatedAt.Format "Jan 2, 2006"}}"{{if .DoneDate}},
                 doneDate: "{{.DoneDate.Format "2006-01-02T15:04:05Z07:00"}}"{{end}}
             },
@@ -670,6 +689,14 @@
                 document.getElementById('modalResourceURL').appendChild(urlLink);
             } else {
                 document.getElementById('modalResourceURLField').style.display = 'none';
+            }
+
+            // Group
+            if (task.groupName) {
+                document.getElementById('modalGroupField').style.display = 'block';
+                document.getElementById('modalGroup').textContent = task.groupName;
+            } else {
+                document.getElementById('modalGroupField').style.display = 'none';
             }
 
             document.getElementById('modalCreatedAt').textContent = task.createdAt;
@@ -794,6 +821,13 @@
                 badge.className = `task-type-badge ${typeClass}`;
                 badge.textContent = task.taskType;
                 card.appendChild(badge);
+            }
+
+            if (task.groupName) {
+                const groupBadge = document.createElement('span');
+                groupBadge.className = 'group-badge';
+                groupBadge.textContent = task.groupName;
+                card.appendChild(groupBadge);
             }
 
             // Double-click to show details
