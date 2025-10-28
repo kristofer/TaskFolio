@@ -1851,7 +1851,11 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 	if user.Role == "instructor" && assignedTo != "" {
 		// Check if assigning to filtered students
-		if assignedTo == "filtered" && filteredStudents != "" {
+		if assignedTo == "filtered" {
+			if filteredStudents == "" {
+				http.Error(w, "No filtered students provided", http.StatusBadRequest)
+				return
+			}
 			// Parse the comma-separated student IDs
 			studentIDStrs := strings.Split(filteredStudents, ",")
 			var studentIDs []int
