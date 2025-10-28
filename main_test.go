@@ -2646,8 +2646,11 @@ t.Errorf("Expected 1 in-progress task for instructor2, got %d", taskStats[1].InP
 }
 
 // TestURLNormalization tests that URLs are properly normalized with protocol
+// Note: This tests the URL normalization logic used in both the Go template function
+// and JavaScript function. The actual template function is defined in main() and used
+// via template.FuncMap, so we test the logic here to ensure correctness.
 func TestURLNormalization(t *testing.T) {
-	// Test the template function directly
+	// Test the URL normalization logic (same as used in template function)
 	funcMap := map[string]interface{}{
 		"normalizeURL": func(url string) string {
 			url = strings.TrimSpace(url)
