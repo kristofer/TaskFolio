@@ -385,7 +385,7 @@ func TestTaskTypes(t *testing.T) {
 	}
 
 	// Test different task types
-	taskTypes := []string{"group-programming-project", "individual-programming-lab", "reading", "document", "resume", "prodev"}
+	taskTypes := []string{"group-programming-project", "individual-programming-lab", "reading", "document", "resume", "prodev", "demo-presentation"}
 
 	for i, taskType := range taskTypes {
 		_, err := testDB.Exec("INSERT INTO tasks (title, task_type, owner_id, created_by) VALUES (?, ?, ?, ?)",
@@ -1544,6 +1544,7 @@ newTaskTypes := []string{
 "document",
 "resume",
 "prodev",
+"demo-presentation",
 }
 
 for _, taskType := range newTaskTypes {
@@ -2096,7 +2097,7 @@ owner_id INTEGER NOT NULL,
 created_by INTEGER NOT NULL,
 assigned_to TEXT,
 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-task_type TEXT CHECK(task_type IN ('group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev', '')),
+task_type TEXT CHECK(task_type IN ('group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev', 'demo-presentation', '')),
 resource_url TEXT,
 cohort_id TEXT,
 in_progress_date DATETIME,
