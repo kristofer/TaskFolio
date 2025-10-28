@@ -11,6 +11,93 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// createTestDB creates an in-memory test database with all necessary tables
+func createTestDB(t *testing.T) *sql.DB {
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	
+	// Enable foreign keys for SQLite
+	_, err = testDB.Exec("PRAGMA foreign_keys = ON")
+	if err != nil {
+		t.Fatalf("Failed to enable foreign keys: %v", err)
+	}
+	
+	// Create users table
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL,
+			role TEXT NOT NULL,
+			cohort_name TEXT,
+			is_suspended BOOLEAN DEFAULT 0
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+	
+	// Create tasks table
+	_, err = testDB.Exec(`
+		CREATE TABLE tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			description TEXT,
+			due_date TEXT,
+			status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'in_progress', 'completed', 'blocked')),
+			owner_id INTEGER NOT NULL,
+			created_by INTEGER NOT NULL,
+			assigned_to TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			task_type TEXT,
+			resource_url TEXT,
+			cohort_id TEXT,
+			in_progress_date DATETIME,
+			done_date DATETIME,
+			group_id INTEGER,
+			FOREIGN KEY (owner_id) REFERENCES users(id),
+			FOREIGN KEY (created_by) REFERENCES users(id),
+			FOREIGN KEY (group_id) REFERENCES groups(id)
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create tasks table: %v", err)
+	}
+	
+	// Create groups table
+	_, err = testDB.Exec(`
+		CREATE TABLE groups (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			description TEXT,
+			project_url TEXT,
+			is_active BOOLEAN DEFAULT 1,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create groups table: %v", err)
+	}
+	
+	// Create group_members table
+	_, err = testDB.Exec(`
+		CREATE TABLE group_members (
+			group_id INTEGER NOT NULL,
+			student_id INTEGER NOT NULL,
+			PRIMARY KEY (group_id, student_id),
+			FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create group_members table: %v", err)
+	}
+	
+	return testDB
+}
+
 func TestDatabaseInitialization(t *testing.T) {
 	// Create an in-memory database for testing
 	testDB, err := sql.Open("sqlite3", ":memory:")
@@ -1462,7 +1549,7 @@ func TestTaskTypeMigration(t *testing.T) {
 if err != nil {
 t.Fatalf("Failed to open test database: %v", err)
 }
-defer testDB.Close()
+	defer testDB.Close()
 
 // Create users table
 _, err = testDB.Exec(`
@@ -2069,7 +2156,7 @@ testDB, err := sql.Open("sqlite3", ":memory:")
 if err != nil {
 t.Fatalf("Failed to open test database: %v", err)
 }
-defer testDB.Close()
+	defer testDB.Close()
 
 // Create users table
 _, err = testDB.Exec(`
@@ -2242,7 +2329,7 @@ testDB, err := sql.Open("sqlite3", ":memory:")
 if err != nil {
 t.Fatalf("Failed to open test database: %v", err)
 }
-defer testDB.Close()
+	defer testDB.Close()
 
 // Create users table
 _, err = testDB.Exec(`
@@ -2350,7 +2437,7 @@ testDB, err := sql.Open("sqlite3", ":memory:")
 if err != nil {
 t.Fatalf("Failed to open test database: %v", err)
 }
-defer testDB.Close()
+	defer testDB.Close()
 
 // Create users table
 _, err = testDB.Exec(`
@@ -2495,7 +2582,7 @@ testDB, err := sql.Open("sqlite3", ":memory:")
 if err != nil {
 t.Fatalf("Failed to open test database: %v", err)
 }
-defer testDB.Close()
+	defer testDB.Close()
 
 // Create users table
 _, err = testDB.Exec(`
@@ -3019,5 +3106,408 @@ func TestFilteredAssignmentWithInvalidIDs(t *testing.T) {
 	}
 	if taskCount != 1 {
 		t.Errorf("Expected 1 task to be created, got %d", taskCount)
+	}
+}
+
+// TestGroupCreation tests creating a new group
+func TestGroupCreation(t *testing.T) {
+	testDB := createTestDB(t)
+	defer testDB.Close()
+	db = testDB
+
+	// Create test students
+	studentIDs := []int{}
+	for i := 1; i <= 3; i++ {
+		result, err := testDB.Exec(`
+			INSERT INTO users (username, password, role, cohort_name)
+			VALUES (?, ?, 'student', 'Java11.2')
+		`, fmt.Sprintf("student%d", i), "password123")
+		if err != nil {
+			t.Fatalf("Failed to create student: %v", err)
+		}
+		id, _ := result.LastInsertId()
+		studentIDs = append(studentIDs, int(id))
+	}
+
+	// Create a group
+	result, err := testDB.Exec(`
+		INSERT INTO groups (name, description, project_url, is_active)
+		VALUES (?, ?, ?, ?)
+	`, "Test Group", "A test group for project work", "https://github.com/test/project", true)
+	if err != nil {
+		t.Fatalf("Failed to create group: %v", err)
+	}
+
+	groupID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatalf("Failed to get group ID: %v", err)
+	}
+
+	// Add students to group
+	for _, studentID := range studentIDs {
+		_, err = testDB.Exec(`
+			INSERT INTO group_members (group_id, student_id)
+			VALUES (?, ?)
+		`, groupID, studentID)
+		if err != nil {
+			t.Fatalf("Failed to add student to group: %v", err)
+		}
+	}
+
+	// Verify group was created
+	var name, description, projectURL string
+	var isActive bool
+	err = testDB.QueryRow(`
+		SELECT name, description, project_url, is_active
+		FROM groups WHERE id = ?
+	`, groupID).Scan(&name, &description, &projectURL, &isActive)
+	if err != nil {
+		t.Fatalf("Failed to retrieve group: %v", err)
+	}
+
+	if name != "Test Group" {
+		t.Errorf("Expected group name 'Test Group', got '%s'", name)
+	}
+	if !isActive {
+		t.Errorf("Expected group to be active")
+	}
+
+	// Verify group members
+	var memberCount int
+	err = testDB.QueryRow(`
+		SELECT COUNT(*) FROM group_members WHERE group_id = ?
+	`, groupID).Scan(&memberCount)
+	if err != nil {
+		t.Fatalf("Failed to count group members: %v", err)
+	}
+
+	if memberCount != 3 {
+		t.Errorf("Expected 3 group members, got %d", memberCount)
+	}
+}
+
+// TestGetGroupByID tests retrieving a group with its members
+func TestGetGroupByID(t *testing.T) {
+	testDB := createTestDB(t)
+	defer testDB.Close()
+	db = testDB
+
+	// Create test students
+	studentIDs := []int{}
+	for i := 1; i <= 2; i++ {
+		result, err := testDB.Exec(`
+			INSERT INTO users (username, password, role)
+			VALUES (?, ?, 'student')
+		`, fmt.Sprintf("student%d", i), "password123")
+		if err != nil {
+			t.Fatalf("Failed to create student: %v", err)
+		}
+		id, _ := result.LastInsertId()
+		studentIDs = append(studentIDs, int(id))
+	}
+
+	// Create a group
+	result, err := testDB.Exec(`
+		INSERT INTO groups (name, description, is_active)
+		VALUES (?, ?, ?)
+	`, "Project Team Alpha", "Alpha team", true)
+	if err != nil {
+		t.Fatalf("Failed to create group: %v", err)
+	}
+
+	groupID, _ := result.LastInsertId()
+
+	// Add students to group
+	for _, studentID := range studentIDs {
+		_, err = testDB.Exec(`
+			INSERT INTO group_members (group_id, student_id)
+			VALUES (?, ?)
+		`, groupID, studentID)
+		if err != nil {
+			t.Fatalf("Failed to add student to group: %v", err)
+		}
+	}
+
+	// Test getGroupByID function
+	group, err := getGroupByID(int(groupID))
+	if err != nil {
+		t.Fatalf("Failed to get group by ID: %v", err)
+	}
+
+	if group.Name != "Project Team Alpha" {
+		t.Errorf("Expected group name 'Project Team Alpha', got '%s'", group.Name)
+	}
+
+	if len(group.Students) != 2 {
+		t.Errorf("Expected 2 students in group, got %d", len(group.Students))
+	}
+}
+
+// TestAssignTaskToGroup tests assigning a task to all members of a group
+func TestAssignTaskToGroup(t *testing.T) {
+	testDB := createTestDB(t)
+	defer testDB.Close()
+	db = testDB
+
+	// Create instructor
+	result, err := testDB.Exec(`
+		INSERT INTO users (username, password, role)
+		VALUES ('instructor1', 'password123', 'instructor')
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create instructor: %v", err)
+	}
+	instructorID, _ := result.LastInsertId()
+
+	// Create test students
+	studentIDs := []int{}
+	for i := 1; i <= 3; i++ {
+		result, err := testDB.Exec(`
+			INSERT INTO users (username, password, role)
+			VALUES (?, ?, 'student')
+		`, fmt.Sprintf("student%d", i), "password123")
+		if err != nil {
+			t.Fatalf("Failed to create student: %v", err)
+		}
+		id, _ := result.LastInsertId()
+		studentIDs = append(studentIDs, int(id))
+	}
+
+	// Create a group
+	result, err = testDB.Exec(`
+		INSERT INTO groups (name, is_active)
+		VALUES (?, ?)
+	`, "Test Group", true)
+	if err != nil {
+		t.Fatalf("Failed to create group: %v", err)
+	}
+	groupID, _ := result.LastInsertId()
+
+	// Add students to group
+	for _, studentID := range studentIDs {
+		_, err = testDB.Exec(`
+			INSERT INTO group_members (group_id, student_id)
+			VALUES (?, ?)
+		`, groupID, studentID)
+		if err != nil {
+			t.Fatalf("Failed to add student to group: %v", err)
+		}
+	}
+
+	// Create a task for each group member
+	taskTitle := "Group Project Task"
+	for _, studentID := range studentIDs {
+		_, err := testDB.Exec(`
+			INSERT INTO tasks (title, description, due_date, owner_id, created_by, task_type, group_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+		`, taskTitle, "Work on group project", "2025-12-31", studentID, instructorID, "group-programming-project", groupID)
+		if err != nil {
+			t.Fatalf("Failed to create task: %v", err)
+		}
+	}
+
+	// Verify tasks were created for all group members
+	var taskCount int
+	err = testDB.QueryRow(`
+		SELECT COUNT(*) FROM tasks WHERE title = ? AND group_id = ?
+	`, taskTitle, groupID).Scan(&taskCount)
+	if err != nil {
+		t.Fatalf("Failed to count tasks: %v", err)
+	}
+
+	if taskCount != 3 {
+		t.Errorf("Expected 3 tasks to be created (one per group member), got %d", taskCount)
+	}
+
+	// Verify each student has the task
+	for _, studentID := range studentIDs {
+		var count int
+		err = testDB.QueryRow(`
+			SELECT COUNT(*) FROM tasks WHERE title = ? AND owner_id = ? AND group_id = ?
+		`, taskTitle, studentID, groupID).Scan(&count)
+		if err != nil {
+			t.Fatalf("Failed to check task for student %d: %v", studentID, err)
+		}
+		if count != 1 {
+			t.Errorf("Expected student %d to have 1 task, got %d", studentID, count)
+		}
+	}
+}
+
+// TestGroupNameRetrieval tests getting group name by ID
+func TestGroupNameRetrieval(t *testing.T) {
+	testDB := createTestDB(t)
+	defer testDB.Close()
+	db = testDB
+
+	// Create a group
+	result, err := testDB.Exec(`
+		INSERT INTO groups (name, is_active)
+		VALUES (?, ?)
+	`, "Team Beta", true)
+	if err != nil {
+		t.Fatalf("Failed to create group: %v", err)
+	}
+	groupID, _ := result.LastInsertId()
+
+	// Test getGroupNameByID function
+	groupName := getGroupNameByID(int(groupID))
+	if groupName != "Team Beta" {
+		t.Errorf("Expected group name 'Team Beta', got '%s'", groupName)
+	}
+
+	// Test with non-existent group ID
+	nonExistentName := getGroupNameByID(9999)
+	if nonExistentName != "" {
+		t.Errorf("Expected empty string for non-existent group, got '%s'", nonExistentName)
+	}
+}
+
+// TestUpdateGroup tests updating group information
+func TestUpdateGroup(t *testing.T) {
+	testDB := createTestDB(t)
+	defer testDB.Close()
+	db = testDB
+
+	// Create initial group
+	result, err := testDB.Exec(`
+		INSERT INTO groups (name, description, is_active)
+		VALUES (?, ?, ?)
+	`, "Old Name", "Old Description", true)
+	if err != nil {
+		t.Fatalf("Failed to create group: %v", err)
+	}
+	groupID, _ := result.LastInsertId()
+
+	// Update group
+	_, err = testDB.Exec(`
+		UPDATE groups
+		SET name = ?, description = ?, is_active = ?
+		WHERE id = ?
+	`, "New Name", "New Description", false, groupID)
+	if err != nil {
+		t.Fatalf("Failed to update group: %v", err)
+	}
+
+	// Verify updates
+	var name, description string
+	var isActive bool
+	err = testDB.QueryRow(`
+		SELECT name, description, is_active FROM groups WHERE id = ?
+	`, groupID).Scan(&name, &description, &isActive)
+	if err != nil {
+		t.Fatalf("Failed to retrieve updated group: %v", err)
+	}
+
+	if name != "New Name" {
+		t.Errorf("Expected name 'New Name', got '%s'", name)
+	}
+	if description != "New Description" {
+		t.Errorf("Expected description 'New Description', got '%s'", description)
+	}
+	if isActive {
+		t.Errorf("Expected group to be inactive")
+	}
+}
+
+// TestDeleteGroup tests deleting a group and cascading deletes
+func TestDeleteGroup(t *testing.T) {
+	testDB := createTestDB(t)
+	defer testDB.Close()
+	db = testDB
+
+	// Create a student
+	result, err := testDB.Exec(`
+		INSERT INTO users (username, password, role)
+		VALUES ('student1', 'password123', 'student')
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create student: %v", err)
+	}
+	studentID, _ := result.LastInsertId()
+
+	// Create a group
+	result, err = testDB.Exec(`
+		INSERT INTO groups (name, is_active)
+		VALUES (?, ?)
+	`, "Temporary Group", true)
+	if err != nil {
+		t.Fatalf("Failed to create group: %v", err)
+	}
+	groupID, _ := result.LastInsertId()
+
+	// Add student to group
+	_, err = testDB.Exec(`
+		INSERT INTO group_members (group_id, student_id)
+		VALUES (?, ?)
+	`, groupID, studentID)
+	if err != nil {
+		t.Fatalf("Failed to add student to group: %v", err)
+	}
+
+	// Delete the group
+	_, err = testDB.Exec(`DELETE FROM groups WHERE id = ?`, groupID)
+	if err != nil {
+		t.Fatalf("Failed to delete group: %v", err)
+	}
+
+	// Verify group is deleted
+	var count int
+	err = testDB.QueryRow(`SELECT COUNT(*) FROM groups WHERE id = ?`, groupID).Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to check group deletion: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("Expected group to be deleted, but it still exists")
+	}
+
+	// Verify group_members entry was cascade deleted
+	err = testDB.QueryRow(`SELECT COUNT(*) FROM group_members WHERE group_id = ?`, groupID).Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to check group_members deletion: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("Expected group_members to be cascade deleted, but found %d entries", count)
+	}
+}
+
+// TestGetAllGroups tests retrieving all groups
+func TestGetAllGroups(t *testing.T) {
+	testDB := createTestDB(t)
+	defer testDB.Close()
+	db = testDB
+
+	// Create multiple groups
+	groupNames := []string{"Alpha Team", "Beta Team", "Gamma Team"}
+	for _, name := range groupNames {
+		_, err := testDB.Exec(`
+			INSERT INTO groups (name, is_active)
+			VALUES (?, ?)
+		`, name, true)
+		if err != nil {
+			t.Fatalf("Failed to create group '%s': %v", name, err)
+		}
+	}
+
+	// Test getAllGroups function
+	groups, err := getAllGroups()
+	if err != nil {
+		t.Fatalf("Failed to get all groups: %v", err)
+	}
+
+	if len(groups) != 3 {
+		t.Errorf("Expected 3 groups, got %d", len(groups))
+	}
+
+	// Verify group names
+	foundNames := make(map[string]bool)
+	for _, group := range groups {
+		foundNames[group.Name] = true
+	}
+
+	for _, expectedName := range groupNames {
+		if !foundNames[expectedName] {
+			t.Errorf("Expected to find group '%s' in results", expectedName)
+		}
 	}
 }
