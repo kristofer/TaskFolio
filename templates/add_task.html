@@ -183,7 +183,7 @@
                         {{if .Groups}}
                         <optgroup label="Groups">
                             {{range .Groups}}
-                            <option value="group:{{.ID}}">Group: {{.Name}}{{if not .IsActive}} (Inactive){{end}}</option>
+                            <option value="group:{{.ID}}" {{if eq $.SelectedGroupID (printf "%d" .ID)}}selected{{end}}>Group: {{.Name}}{{if not .IsActive}} (Inactive){{end}}</option>
                             {{end}}
                         </optgroup>
                         {{end}}
