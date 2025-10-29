@@ -85,12 +85,17 @@
             grid-template-columns: repeat(4, 1fr);
             gap: 20px;
             min-height: 500px;
+            max-height: calc(100vh - 200px);
         }
         .kanban-column {
             background: #e5e7eb;
             border-radius: 10px;
             padding: 15px;
             min-height: 500px;
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
         }
         .column-header {
             display: flex;
@@ -135,6 +140,7 @@
             flex-direction: column;
             gap: 12px;
             min-height: 50px;
+            flex: 1;
         }
         .task-card {
             background: white;
