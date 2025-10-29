@@ -91,13 +91,13 @@ CREATE TABLE tasks (
 - `id`: Auto-incrementing primary key
 - `title`: Task title/name
 - `description`: Detailed description of the task
-- `due_date`: Due date as text string
+- `due_date`: Due date stored as text string (flexible format, typically YYYY-MM-DD or user-entered format)
 - `status`: Current status (pending, in_progress, completed, blocked)
 - `owner_id`: User responsible for completing the task
 - `created_by`: User who created the task (may differ from owner for instructor assignments)
 - `assigned_to`: For group assignments, comma-separated list of usernames
 - `created_at`: Creation timestamp
-- `task_type`: Type of task (project, lab, reading, document, resume, professional development, demo)
+- `task_type`: Type of task (project, lab, reading, document, resume, professional development, demo), or empty string for generic tasks
 - `resource_url`: URL to external resources (GitHub repos, Google Docs, etc.)
 - `cohort_id`: For cohort-wide assignments, the cohort name
 - `in_progress_date`: Timestamp when task was first moved to in_progress status
