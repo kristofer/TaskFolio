@@ -1,325 +1,278 @@
-# TaskFolio Database Schema Design
+# TaskFolio Database Schema
 
 ## Overview
-This document outlines the database schema for TaskFolio, including all tables, relationships, and indexes.
+This document describes the **current implementation** of the TaskFolio database schema using SQLite3. The application uses a simple, educational database design suitable for a coding bootcamp task management system.
+
+> **Note**: This documentation reflects the actual implemented schema. For future expansion plans, see ROADMAP.md.
 
 ## Entity Relationship Diagram (ERD)
 
 ```
-Users ──┬── Tasks (created_by)
-        ├── Tasks (assigned_to)
-        ├── Comments
-        ├── TaskHistory
-        └── Notifications
+Users ──┬── Tasks (owner_id)
+        ├── Tasks (created_by)
+        ├── Groups (via group_members)
+        └── GroupMembers
 
-Tasks ──┬── Comments
-        ├── Tags (many-to-many)
-        ├── Attachments
-        ├── TaskHistory
-        └── Subtasks (self-referential)
+Tasks ──┬── Groups (group_id)
+        ├── Users (owner_id)
+        └── Users (created_by)
 
-Teams ──┬── TeamMembers
-        └── Tasks
+Groups ──┬── GroupMembers
+         └── Tasks (group_id)
 ```
 
 ## Tables
 
 ### users
-Primary table for storing user information.
+Stores student and instructor account information.
+
+**Security Note**: This is a demo/educational application. Passwords are stored in plain text, which is **NOT suitable for production use**. Production systems should use bcrypt or similar hashing.
 
 ```sql
 CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email VARCHAR(255) UNIQUE NOT NULL,
-    username VARCHAR(100) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    first_name VARCHAR(100),
-    last_name VARCHAR(100),
-    role VARCHAR(20) NOT NULL DEFAULT 'student', -- student, instructor, admin
-    avatar_url TEXT,
-    is_active BOOLEAN DEFAULT true,
-    last_login_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,  -- ⚠️ Plain text for demo purposes only
+    role TEXT NOT NULL CHECK(role IN ('student', 'instructor')),
+    cohort_name TEXT,  -- e.g., 'Java11.2', 'Data6.2'
+    is_suspended BOOLEAN DEFAULT 0
 );
-
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_username ON users(username);
-CREATE INDEX idx_users_role ON users(role);
 ```
 
-### user_preferences
-Store user-specific settings and preferences.
+**Fields:**
+- `id`: Auto-incrementing primary key
+- `username`: Unique username for login
+- `password`: Plain text password (demo only)
+- `role`: Either 'student' or 'instructor'
+- `cohort_name`: Optional cohort assignment (e.g., "Java11.2", "Data6.2")
+- `is_suspended`: Account suspension flag (0=active, 1=suspended)
 
-```sql
-CREATE TABLE user_preferences (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    theme VARCHAR(20) DEFAULT 'light', -- light, dark
-    email_notifications BOOLEAN DEFAULT true,
-    push_notifications BOOLEAN DEFAULT false,
-    notification_frequency VARCHAR(20) DEFAULT 'instant', -- instant, daily, weekly
-    timezone VARCHAR(50) DEFAULT 'UTC',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE UNIQUE INDEX idx_user_preferences_user_id ON user_preferences(user_id);
-```
+**Demo Data:**
+The application seeds demo accounts on first run:
+- Instructor: `username=instructor1`, `password=password123`
+- Students: `username=student1/student2/student3`, `password=password123`
 
 ### tasks
-Core table for task management.
+Core table for task management, supporting both student-created and instructor-assigned tasks.
 
 ```sql
 CREATE TABLE tasks (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title VARCHAR(255) NOT NULL,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
     description TEXT,
-    status VARCHAR(20) NOT NULL DEFAULT 'todo', -- todo, in_progress, completed, blocked
-    priority VARCHAR(20) DEFAULT 'medium', -- low, medium, high, critical
-    created_by UUID NOT NULL REFERENCES users(id),
-    assigned_to UUID REFERENCES users(id),
-    team_id UUID REFERENCES teams(id),
-    parent_task_id UUID REFERENCES tasks(id), -- for subtasks
-    due_date TIMESTAMP,
-    start_date TIMESTAMP,
-    completed_at TIMESTAMP,
-    estimated_hours DECIMAL(5,2),
-    actual_hours DECIMAL(5,2),
-    is_recurring BOOLEAN DEFAULT false,
-    recurrence_pattern TEXT, -- JSON string for recurrence rules
-    position INTEGER DEFAULT 0, -- for ordering in lists
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    due_date TEXT,
+    status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'in_progress', 'completed', 'blocked')),
+    owner_id INTEGER NOT NULL,  -- User who owns/is responsible for the task
+    created_by INTEGER NOT NULL,  -- User who created the task
+    assigned_to TEXT,  -- Comma-separated usernames for group assignments
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    task_type TEXT CHECK(task_type IN (
+        'group-programming-project',
+        'individual-programming-lab',
+        'reading',
+        'document',
+        'resume',
+        'prodev',
+        'demo-presentation',
+        ''
+    )),
+    resource_url TEXT,  -- URL to task resources (repos, docs, etc.)
+    cohort_id TEXT,  -- Cohort name for cohort-wide assignments
+    in_progress_date DATETIME,  -- When task status changed to 'in_progress'
+    done_date DATETIME,  -- When task status changed to 'completed'
+    group_id INTEGER,  -- Reference to groups table for group tasks
+    FOREIGN KEY (owner_id) REFERENCES users(id),
+    FOREIGN KEY (created_by) REFERENCES users(id),
+    FOREIGN KEY (group_id) REFERENCES groups(id)
 );
-
-CREATE INDEX idx_tasks_status ON tasks(status);
-CREATE INDEX idx_tasks_priority ON tasks(priority);
-CREATE INDEX idx_tasks_created_by ON tasks(created_by);
-CREATE INDEX idx_tasks_assigned_to ON tasks(assigned_to);
-CREATE INDEX idx_tasks_due_date ON tasks(due_date);
-CREATE INDEX idx_tasks_team_id ON tasks(team_id);
-CREATE INDEX idx_tasks_parent_task_id ON tasks(parent_task_id);
 ```
 
-### tags
-Tags/categories for organizing tasks.
+**Fields:**
+- `id`: Auto-incrementing primary key
+- `title`: Task title/name
+- `description`: Detailed description of the task
+- `due_date`: Due date stored as text string (flexible format, typically YYYY-MM-DD or user-entered format)
+- `status`: Current status (pending, in_progress, completed, blocked)
+- `owner_id`: User responsible for completing the task
+- `created_by`: User who created the task (may differ from owner for instructor assignments)
+- `assigned_to`: For group assignments, comma-separated list of usernames
+- `created_at`: Creation timestamp
+- `task_type`: Type of task (project, lab, reading, document, resume, professional development, demo), or empty string for generic tasks
+- `resource_url`: URL to external resources (GitHub repos, Google Docs, etc.)
+- `cohort_id`: For cohort-wide assignments, the cohort name
+- `in_progress_date`: Timestamp when task was first moved to in_progress status
+- `done_date`: Timestamp when task was moved to completed status
+- `group_id`: Foreign key to groups table for group-based tasks
+
+### groups
+Student groups for collaborative work and group programming projects.
 
 ```sql
-CREATE TABLE tags (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(50) UNIQUE NOT NULL,
-    color VARCHAR(7), -- hex color code
-    created_by UUID REFERENCES users(id),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_tags_name ON tags(name);
-```
-
-### task_tags
-Many-to-many relationship between tasks and tags.
-
-```sql
-CREATE TABLE task_tags (
-    task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (task_id, tag_id)
-);
-
-CREATE INDEX idx_task_tags_task_id ON task_tags(task_id);
-CREATE INDEX idx_task_tags_tag_id ON task_tags(tag_id);
-```
-
-### comments
-Comments on tasks.
-
-```sql
-CREATE TABLE comments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id),
-    content TEXT NOT NULL,
-    parent_comment_id UUID REFERENCES comments(id), -- for threaded comments
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_comments_task_id ON comments(task_id);
-CREATE INDEX idx_comments_user_id ON comments(user_id);
-CREATE INDEX idx_comments_created_at ON comments(created_at DESC);
-```
-
-### attachments
-File attachments for tasks.
-
-```sql
-CREATE TABLE attachments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    uploaded_by UUID NOT NULL REFERENCES users(id),
-    filename VARCHAR(255) NOT NULL,
-    file_path TEXT NOT NULL,
-    file_size BIGINT,
-    mime_type VARCHAR(100),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_attachments_task_id ON attachments(task_id);
-```
-
-### task_history
-Audit trail for task changes.
-
-```sql
-CREATE TABLE task_history (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id),
-    action VARCHAR(50) NOT NULL, -- created, updated, status_changed, assigned, etc.
-    field_name VARCHAR(50),
-    old_value TEXT,
-    new_value TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_task_history_task_id ON task_history(task_id);
-CREATE INDEX idx_task_history_created_at ON task_history(created_at DESC);
-```
-
-### teams
-Teams or groups of users.
-
-```sql
-CREATE TABLE teams (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(100) NOT NULL,
+CREATE TABLE groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
     description TEXT,
-    created_by UUID NOT NULL REFERENCES users(id),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    project_url TEXT,  -- URL to group project repository
+    is_active BOOLEAN DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE INDEX idx_teams_created_by ON teams(created_by);
 ```
 
-### team_members
-Members of teams.
+**Fields:**
+- `id`: Auto-incrementing primary key
+- `name`: Group name
+- `description`: Description of the group's purpose
+- `project_url`: URL to the group's project repository or resources
+- `is_active`: Whether the group is currently active (1=active, 0=inactive)
+- `created_at`: Creation timestamp
+
+### group_members
+Junction table for many-to-many relationship between groups and students.
 
 ```sql
-CREATE TABLE team_members (
-    team_id UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role VARCHAR(20) DEFAULT 'member', -- member, lead
-    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (team_id, user_id)
+CREATE TABLE group_members (
+    group_id INTEGER NOT NULL,
+    student_id INTEGER NOT NULL,
+    PRIMARY KEY (group_id, student_id),
+    FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
 );
-
-CREATE INDEX idx_team_members_user_id ON team_members(user_id);
 ```
 
-### notifications
-System notifications for users.
+**Fields:**
+- `group_id`: Foreign key to groups table
+- `student_id`: Foreign key to users table (students only)
+- Composite primary key ensures each student can only be in a group once
+- CASCADE delete ensures cleanup when groups or students are removed
 
-```sql
-CREATE TABLE notifications (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    type VARCHAR(50) NOT NULL, -- task_assigned, task_due, comment_added, etc.
-    title VARCHAR(255) NOT NULL,
-    message TEXT,
-    link TEXT,
-    is_read BOOLEAN DEFAULT false,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+## Key Relationships
 
-CREATE INDEX idx_notifications_user_id ON notifications(user_id);
-CREATE INDEX idx_notifications_is_read ON notifications(is_read);
-CREATE INDEX idx_notifications_created_at ON notifications(created_at DESC);
-```
+### Task Ownership vs Creation
+- `owner_id`: The user responsible for completing the task
+- `created_by`: The user who created the task
+- For student-created tasks: `owner_id` = `created_by`
+- For instructor-assigned tasks: `owner_id` = student, `created_by` = instructor
 
-### task_dependencies
-Dependencies between tasks.
+### Cohort-based Organization
+- Users can belong to cohorts via the `cohort_name` field
+- Tasks can be assigned to entire cohorts via the `cohort_id` field
+- Instructors can filter views and assignments by cohort
 
-```sql
-CREATE TABLE task_dependencies (
-    task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    depends_on_task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    dependency_type VARCHAR(20) DEFAULT 'finish_to_start', -- finish_to_start, start_to_start, etc.
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (task_id, depends_on_task_id),
-    CHECK (task_id != depends_on_task_id)
-);
+### Group Assignments
+- Groups are created with students as members
+- Tasks can be assigned to groups via `group_id`
+- Students in a group can collaborate on group tasks
+- The `assigned_to` field can also contain comma-separated usernames for ad-hoc grouping
 
-CREATE INDEX idx_task_dependencies_task_id ON task_dependencies(task_id);
-CREATE INDEX idx_task_dependencies_depends_on ON task_dependencies(depends_on_task_id);
-```
+## Common Query Patterns
 
-### sessions
-User session management (optional, if not using JWT-only).
-
-```sql
-CREATE TABLE sessions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token VARCHAR(255) UNIQUE NOT NULL,
-    ip_address INET,
-    user_agent TEXT,
-    expires_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_sessions_user_id ON sessions(user_id);
-CREATE INDEX idx_sessions_token ON sessions(token);
-CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
-```
-
-## Common Queries and Optimizations
-
-### Most Common Queries
-
-1. **Get user's tasks with filters**
+### Get All Tasks for a User
 ```sql
 SELECT * FROM tasks 
-WHERE assigned_to = $1 
-AND status = $2 
-ORDER BY due_date ASC, priority DESC;
-```
-
-2. **Get task with all details**
-```sql
-SELECT t.*, u1.username as creator, u2.username as assignee
-FROM tasks t
-LEFT JOIN users u1 ON t.created_by = u1.id
-LEFT JOIN users u2 ON t.assigned_to = u2.id
-WHERE t.id = $1;
-```
-
-3. **Get unread notifications**
-```sql
-SELECT * FROM notifications 
-WHERE user_id = $1 AND is_read = false 
+WHERE owner_id = ? 
 ORDER BY created_at DESC;
 ```
 
-## Migration Strategy
+### Get Tasks by Status for a User
+```sql
+SELECT * FROM tasks 
+WHERE owner_id = ? AND status = ? 
+ORDER BY due_date ASC;
+```
 
-1. **Initial Migration**: Create all base tables
-2. **Seed Data**: Insert default tags, roles, and sample data
-3. **Future Migrations**: Add new columns/tables as features are developed
-4. **Rollback Plan**: Keep rollback scripts for each migration
+### Get All Students in a Cohort
+```sql
+SELECT * FROM users 
+WHERE role = 'student' AND cohort_name = ?;
+```
 
-## Data Retention Policy
+### Get Group Members
+```sql
+SELECT u.* 
+FROM users u
+INNER JOIN group_members gm ON u.id = gm.student_id
+WHERE gm.group_id = ?;
+```
 
-- **Active tasks**: Kept indefinitely
-- **Completed tasks**: Kept for 2 years, then archived
-- **Notifications**: Kept for 90 days
-- **Sessions**: Cleaned up after expiration
-- **Task history**: Kept for 1 year for completed tasks
+### Get Tasks for a Group
+```sql
+SELECT * FROM tasks 
+WHERE group_id = ? 
+ORDER BY created_at DESC;
+```
 
-## Backup Strategy
+## Database Migrations
 
-- **Daily backups**: Full database backup at 2 AM
-- **Transaction logs**: Continuous backup for point-in-time recovery
-- **Retention**: Keep 30 days of daily backups, 12 months of weekly backups
+The application uses automatic schema migration on startup via the `migrateDatabase()` function. This approach:
+
+1. **Checks for missing columns** using SQLite's `pragma_table_info()`
+2. **Adds columns** using `ALTER TABLE` if they don't exist
+3. **Preserves existing data** during migrations
+4. **Handles CHECK constraint updates** by recreating tables when needed
+
+### Migration Process for Adding New Fields
+
+When adding new fields to the schema:
+
+1. Update the struct definition in main.go
+2. Add column creation in `initDB()` for new databases
+3. Add column migration in `migrateDatabase()` for existing databases
+4. Update any relevant queries to use the new field
+5. Write tests for the new functionality
+
+Example migration code:
+```go
+var columnExists int
+err := db.QueryRow(`
+    SELECT COUNT(*) FROM pragma_table_info('table_name') WHERE name='column_name'
+`).Scan(&columnExists)
+if err == nil && columnExists == 0 {
+    _, err = db.Exec(`ALTER TABLE table_name ADD COLUMN column_name TYPE`)
+    if err != nil {
+        return fmt.Errorf("failed to add column: %v", err)
+    }
+}
+```
+
+## Implementation Notes
+
+### SQLite Characteristics
+- **Single file database**: Default location is `./taskfolio.db`
+- **Auto-increment IDs**: Uses INTEGER PRIMARY KEY AUTOINCREMENT
+- **Foreign key support**: Enabled via `PRAGMA foreign_keys = ON`
+- **Simple types**: Uses TEXT, INTEGER, BOOLEAN, DATETIME
+- **No UUID support**: Uses integer IDs instead
+
+### Session Management
+Currently implemented as in-memory map (not persisted to database):
+- Simple cookie-based authentication
+- Sessions stored in Go map in application memory
+- No expiration mechanism (known limitation)
+- Not suitable for multi-instance deployments
+
+### Security Considerations
+
+⚠️ **This is a demo/educational application** with known security limitations:
+
+1. **Plain text passwords**: Should use bcrypt in production
+2. **No CSRF protection**: Vulnerable to cross-site request forgery
+3. **Basic session management**: No expiration, in-memory only
+4. **No rate limiting**: Vulnerable to brute force attacks
+
+See the main README.md for complete security disclaimers.
+
+## Future Expansion Considerations
+
+Features that may be added in future versions:
+- Password hashing (bcrypt)
+- Proper session management with expiration
+- Email notifications
+- Task comments/discussion
+- File attachments
+- Task history/audit trail
+- Tags for task organization
+- Task dependencies
+- PostgreSQL support for larger deployments
+- RESTful API endpoints
+
+For roadmap details, see ROADMAP.md.
