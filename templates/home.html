@@ -854,8 +854,12 @@
             const formData = new FormData(this);
             const taskId = document.getElementById('editTaskId').value;
             const params = new URLSearchParams();
+            
+            // Add all form fields except the ID (which is in the URL)
             for (const [key, value] of formData) {
-                params.append(key, value);
+                if (key !== 'id') {
+                    params.append(key, value);
+                }
             }
 
             fetch('/tasks/edit?id=' + encodeURIComponent(taskId), {
