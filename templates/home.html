@@ -719,7 +719,7 @@
     </div>
 
     <script>
-        // Current user ID from server
+        // Current user ID from server (integer, safe from XSS)
         const currentUserId = {{.User.ID}};
         
         // Task data from server
@@ -852,12 +852,13 @@
             e.preventDefault();
             
             const formData = new FormData(this);
+            const taskId = document.getElementById('editTaskId').value;
             const params = new URLSearchParams();
             for (const [key, value] of formData) {
                 params.append(key, value);
             }
 
-            fetch('/tasks/edit?' + params.toString(), {
+            fetch('/tasks/edit?id=' + encodeURIComponent(taskId), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded',
@@ -869,12 +870,14 @@
                     // Reload page to show updated task
                     window.location.reload();
                 } else {
-                    alert('Failed to update task');
+                    return response.text().then(text => {
+                        throw new Error(text || 'Failed to update task');
+                    });
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Failed to update task');
+                alert('Error updating task: ' + (error.message || 'Please try again'));
             });
         });
 
@@ -892,7 +895,10 @@
         function confirmDelete() {
             if (!window.currentTaskId) return;
 
-            window.location.href = '/tasks/delete?id=' + window.currentTaskId;
+            // NOTE: Using existing delete endpoint which uses GET request
+            // This follows the existing pattern in the codebase
+            // For production, should be changed to POST with CSRF protection
+            window.location.href = '/tasks/delete?id=' + encodeURIComponent(window.currentTaskId);
         }
 
         // Close modal when clicking outside of it
