@@ -343,8 +343,8 @@
             {{end}}
             
             <div class="action-buttons">
-                <a href="/tasks/edit-group?title={{.Title}}&created_by={{.CreatedBy}}&cohort_id={{.CohortID}}" class="edit-btn">✏️ Edit Task</a>
-                <button onclick="if(confirm('Are you sure you want to delete this task? This will remove it from all assigned students.')) { window.location.href='/tasks/delete-group?title={{.Title}}&created_by={{.CreatedBy}}&cohort_id={{.CohortID}}'; }" class="delete-btn">🗑️ Delete Task</button>
+                <a href="/tasks/edit-group?title={{urlquery .Title}}&created_by={{.CreatedBy}}&cohort_id={{urlquery .CohortID}}" class="edit-btn">✏️ Edit Task</a>
+                <button onclick="if(confirm('Are you sure you want to delete this task? This will remove it from all assigned students.')) { window.location.href='/tasks/delete-group?title={{urlquery .Title}}&created_by={{.CreatedBy}}&cohort_id={{urlquery .CohortID}}'; }" class="delete-btn">🗑️ Delete Task</button>
             </div>
         </div>
         {{end}}

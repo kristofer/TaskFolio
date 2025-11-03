@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -1573,17 +1574,36 @@ func deleteGroupTaskHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Delete all tasks with matching title, created_by, and cohort_id
-	result, err := db.Exec(`
-		DELETE FROM tasks
-		WHERE title = ? AND created_by = ? AND COALESCE(cohort_id, '') = ?
-	`, taskTitle, createdBy, cohortID)
+	// Use explicit comparison for cohort_id to handle both NULL and empty string cases correctly
+	var result sql.Result
+	if cohortID == "" {
+		result, err = db.Exec(`
+			DELETE FROM tasks
+			WHERE title = ? AND created_by = ? AND (cohort_id IS NULL OR cohort_id = '')
+		`, taskTitle, createdBy)
+	} else {
+		result, err = db.Exec(`
+			DELETE FROM tasks
+			WHERE title = ? AND created_by = ? AND cohort_id = ?
+		`, taskTitle, createdBy, cohortID)
+	}
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	rowsAffected, _ := result.RowsAffected()
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("Error getting rows affected: %v", err)
+	}
+	
+	if rowsAffected == 0 {
+		log.Printf("Warning: No tasks were deleted for task '%s' created by user %d with cohort_id '%s'", taskTitle, createdBy, cohortID)
+		http.Error(w, "Task not found or already deleted", http.StatusNotFound)
+		return
+	}
+	
 	log.Printf("Deleted %d task instances for task '%s' created by user %d", rowsAffected, taskTitle, createdBy)
 
 	http.Redirect(w, r, "/tasks/stats", http.StatusSeeOther)
@@ -1694,18 +1714,38 @@ func editGroupTaskHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update all tasks with matching old_title, created_by, and cohort_id
-	result, err := db.Exec(`
-		UPDATE tasks
-		SET title = ?, description = ?, due_date = ?, task_type = ?, resource_url = ?
-		WHERE title = ? AND created_by = ? AND COALESCE(cohort_id, '') = ?
-	`, title, description, dueDate, taskType, resourceURL, oldTitle, createdBy, cohortID)
+	// Use explicit comparison for cohort_id to handle both NULL and empty string cases correctly
+	var result sql.Result
+	if cohortID == "" {
+		result, err = db.Exec(`
+			UPDATE tasks
+			SET title = ?, description = ?, due_date = ?, task_type = ?, resource_url = ?
+			WHERE title = ? AND created_by = ? AND (cohort_id IS NULL OR cohort_id = '')
+		`, title, description, dueDate, taskType, resourceURL, oldTitle, createdBy)
+	} else {
+		result, err = db.Exec(`
+			UPDATE tasks
+			SET title = ?, description = ?, due_date = ?, task_type = ?, resource_url = ?
+			WHERE title = ? AND created_by = ? AND cohort_id = ?
+		`, title, description, dueDate, taskType, resourceURL, oldTitle, createdBy, cohortID)
+	}
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	rowsAffected, _ := result.RowsAffected()
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("Error getting rows affected: %v", err)
+	}
+	
+	if rowsAffected == 0 {
+		log.Printf("Warning: No tasks were updated for task '%s' created by user %d with cohort_id '%s'", oldTitle, createdBy, cohortID)
+		http.Error(w, "Task not found or no changes made", http.StatusNotFound)
+		return
+	}
+	
 	log.Printf("Updated %d task instances for task '%s' created by user %d", rowsAffected, oldTitle, createdBy)
 
 	http.Redirect(w, r, "/tasks/stats", http.StatusSeeOther)
@@ -2350,6 +2390,10 @@ func main() {
 				return "https://" + url
 			}
 			return url
+		},
+		"urlquery": func(s string) string {
+			// URL encode a string for use in query parameters
+			return url.QueryEscape(s)
 		},
 	}
 	templates = template.Must(template.New("").Funcs(funcMap).ParseGlob("templates/*.html"))
