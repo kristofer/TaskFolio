@@ -190,7 +190,7 @@
                             <span class="stat-number">{{.Completed}}</span>
                         </td>
                         <td>
-                            <a href="/tasks/detail?title={{.Title}}&created_by={{.CreatedBy}}&cohort_id={{.CohortID}}" 
+                            <a href="/tasks/detail?title={{urlquery .Title}}&created_by={{.CreatedBy}}&cohort_id={{urlquery .CohortID}}" 
                                class="details-btn">Details</a>
                         </td>
                     </tr>

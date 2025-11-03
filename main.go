@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -1523,6 +1524,233 @@ func taskDetailHandler(w http.ResponseWriter, r *http.Request) {
 	templates.ExecuteTemplate(w, "task_detail.html", data)
 }
 
+// deleteGroupTaskHandler deletes all instances of a task assigned to multiple students
+func deleteGroupTaskHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can delete group tasks
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	// Get task parameters
+	taskTitle := r.URL.Query().Get("title")
+	createdByStr := r.URL.Query().Get("created_by")
+	cohortID := r.URL.Query().Get("cohort_id")
+
+	if taskTitle == "" || createdByStr == "" {
+		http.Error(w, "Missing required parameters", http.StatusBadRequest)
+		return
+	}
+
+	createdBy, err := strconv.Atoi(createdByStr)
+	if err != nil {
+		http.Error(w, "Invalid created_by parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Verify the task was created by an instructor
+	var creatorRole string
+	err = db.QueryRow("SELECT role FROM users WHERE id = ?", createdBy).Scan(&creatorRole)
+	if err != nil {
+		http.Error(w, "Creator not found", http.StatusNotFound)
+		return
+	}
+
+	if creatorRole != "instructor" {
+		http.Error(w, "Can only delete instructor-created tasks", http.StatusForbidden)
+		return
+	}
+
+	// Delete all tasks with matching title, created_by, and cohort_id
+	// Use explicit comparison for cohort_id to handle both NULL and empty string cases correctly
+	var result sql.Result
+	if cohortID == "" {
+		result, err = db.Exec(`
+			DELETE FROM tasks
+			WHERE title = ? AND created_by = ? AND (cohort_id IS NULL OR cohort_id = '')
+		`, taskTitle, createdBy)
+	} else {
+		result, err = db.Exec(`
+			DELETE FROM tasks
+			WHERE title = ? AND created_by = ? AND cohort_id = ?
+		`, taskTitle, createdBy, cohortID)
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("Error getting rows affected: %v", err)
+	}
+	
+	if rowsAffected == 0 {
+		log.Printf("Warning: No tasks were deleted for task '%s' created by user %d with cohort_id '%s'", taskTitle, createdBy, cohortID)
+		http.Error(w, "Task not found or already deleted", http.StatusNotFound)
+		return
+	}
+	
+	log.Printf("Deleted %d task instances for task '%s' created by user %d", rowsAffected, taskTitle, createdBy)
+
+	http.Redirect(w, r, "/tasks/stats", http.StatusSeeOther)
+}
+
+// editGroupTaskHandler provides a form to edit all instances of a task assigned to multiple students
+func editGroupTaskHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can edit group tasks
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	taskTitle := r.URL.Query().Get("title")
+	createdByStr := r.URL.Query().Get("created_by")
+	cohortID := r.URL.Query().Get("cohort_id")
+
+	if r.Method == "GET" {
+		if taskTitle == "" || createdByStr == "" {
+			http.Error(w, "Missing required parameters", http.StatusBadRequest)
+			return
+		}
+
+		createdBy, err := strconv.Atoi(createdByStr)
+		if err != nil {
+			http.Error(w, "Invalid created_by parameter", http.StatusBadRequest)
+			return
+		}
+
+		// Get task information from the first matching task
+		var task Task
+		err = db.QueryRow(`
+			SELECT id, title, COALESCE(description, ''), COALESCE(due_date, ''),
+			       status, owner_id, created_by,
+			       COALESCE(task_type, ''), COALESCE(resource_url, '')
+			FROM tasks
+			WHERE title = ? AND created_by = ? AND COALESCE(cohort_id, '') = ?
+			ORDER BY created_at ASC
+			LIMIT 1
+		`, taskTitle, createdBy, cohortID).Scan(&task.ID, &task.Title, &task.Description,
+			&task.DueDate, &task.Status, &task.OwnerID, &task.CreatedBy,
+			&task.TaskType, &task.ResourceURL)
+
+		if err != nil {
+			http.Error(w, "Task not found", http.StatusNotFound)
+			return
+		}
+
+		data := struct {
+			User     User
+			Task     Task
+			IsGroup  bool
+			CohortID string
+		}{
+			User:     user,
+			Task:     task,
+			IsGroup:  true,
+			CohortID: cohortID,
+		}
+		templates.ExecuteTemplate(w, "edit_task.html", data)
+		return
+	}
+
+	// POST request - update all matching tasks
+	title := r.FormValue("title")
+	description := r.FormValue("description")
+	dueDate := r.FormValue("due_date")
+	taskType := r.FormValue("task_type")
+	resourceURL := r.FormValue("resource_url")
+	oldTitle := r.FormValue("old_title")
+	createdByStr = r.FormValue("created_by")
+	cohortID = r.FormValue("cohort_id")
+
+	if oldTitle == "" || createdByStr == "" {
+		http.Error(w, "Missing required parameters", http.StatusBadRequest)
+		return
+	}
+
+	createdBy, err := strconv.Atoi(createdByStr)
+	if err != nil {
+		http.Error(w, "Invalid created_by parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Verify the task was created by an instructor
+	var creatorRole string
+	err = db.QueryRow("SELECT role FROM users WHERE id = ?", createdBy).Scan(&creatorRole)
+	if err != nil {
+		http.Error(w, "Creator not found", http.StatusNotFound)
+		return
+	}
+
+	if creatorRole != "instructor" {
+		http.Error(w, "Can only edit instructor-created tasks", http.StatusForbidden)
+		return
+	}
+
+	// Update all tasks with matching old_title, created_by, and cohort_id
+	// Use explicit comparison for cohort_id to handle both NULL and empty string cases correctly
+	var result sql.Result
+	if cohortID == "" {
+		result, err = db.Exec(`
+			UPDATE tasks
+			SET title = ?, description = ?, due_date = ?, task_type = ?, resource_url = ?
+			WHERE title = ? AND created_by = ? AND (cohort_id IS NULL OR cohort_id = '')
+		`, title, description, dueDate, taskType, resourceURL, oldTitle, createdBy)
+	} else {
+		result, err = db.Exec(`
+			UPDATE tasks
+			SET title = ?, description = ?, due_date = ?, task_type = ?, resource_url = ?
+			WHERE title = ? AND created_by = ? AND cohort_id = ?
+		`, title, description, dueDate, taskType, resourceURL, oldTitle, createdBy, cohortID)
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("Error getting rows affected: %v", err)
+	}
+	
+	if rowsAffected == 0 {
+		log.Printf("Warning: No tasks were updated for task '%s' created by user %d with cohort_id '%s'", oldTitle, createdBy, cohortID)
+		http.Error(w, "Task not found or no changes made", http.StatusNotFound)
+		return
+	}
+	
+	log.Printf("Updated %d task instances for task '%s' created by user %d", rowsAffected, oldTitle, createdBy)
+
+	http.Redirect(w, r, "/tasks/stats", http.StatusSeeOther)
+}
+
 // instructorsHandler displays list of instructors for instructors to manage
 func instructorsHandler(w http.ResponseWriter, r *http.Request) {
 	session, err := getSession(r)
@@ -2163,6 +2391,10 @@ func main() {
 			}
 			return url
 		},
+		"urlquery": func(s string) string {
+			// URL encode a string for use in query parameters
+			return url.QueryEscape(s)
+		},
 	}
 	templates = template.Must(template.New("").Funcs(funcMap).ParseGlob("templates/*.html"))
 
@@ -2188,6 +2420,8 @@ func main() {
 	http.HandleFunc("/groups/delete", deleteGroupHandler)
 	http.HandleFunc("/tasks/stats", taskStatsHandler)
 	http.HandleFunc("/tasks/detail", taskDetailHandler)
+	http.HandleFunc("/tasks/delete-group", deleteGroupTaskHandler)
+	http.HandleFunc("/tasks/edit-group", editGroupTaskHandler)
 	http.HandleFunc("/instructors", instructorsHandler)
 	http.HandleFunc("/instructors/add", addInstructorHandler)
 	http.HandleFunc("/api/cohorts", apiCohortsHandler)
