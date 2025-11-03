@@ -4037,15 +4037,15 @@ func TestDeleteGroupTaskWithEmptyCohortID(t *testing.T) {
 // TestDemoPresentationMigration tests the specific case where a database has newer task types
 // but is missing 'demo-presentation' from the CHECK constraint
 func TestDemoPresentationMigration(t *testing.T) {
-// Create a database with the constraint that has newer types but is missing demo-presentation
-testDB, err := sql.Open("sqlite3", ":memory:")
-if err != nil {
-t.Fatalf("Failed to open test database: %v", err)
-}
-defer testDB.Close()
+	// Create a database with the constraint that has newer types but is missing demo-presentation
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
 
-// Create users table
-_, err = testDB.Exec(`
+	// Create users table
+	_, err = testDB.Exec(`
 CREATE TABLE users (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 username TEXT UNIQUE NOT NULL,
@@ -4055,12 +4055,12 @@ cohort_name TEXT,
 is_suspended BOOLEAN DEFAULT 0
 )
 `)
-if err != nil {
-t.Fatalf("Failed to create users table: %v", err)
-}
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
 
-// Create tasks table WITHOUT demo-presentation (simulating a database from before it was added)
-_, err = testDB.Exec(`
+	// Create tasks table WITHOUT demo-presentation (simulating a database from before it was added)
+	_, err = testDB.Exec(`
 CREATE TABLE tasks (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 title TEXT NOT NULL,
@@ -4080,55 +4080,55 @@ FOREIGN KEY (owner_id) REFERENCES users(id),
 FOREIGN KEY (created_by) REFERENCES users(id)
 )
 `)
-if err != nil {
-t.Fatalf("Failed to create tasks table: %v", err)
-}
+	if err != nil {
+		t.Fatalf("Failed to create tasks table: %v", err)
+	}
 
-// Insert test user and task
-_, err = testDB.Exec(`INSERT INTO users (id, username, password, role) VALUES (1, 'testuser', 'pass', 'student')`)
-if err != nil {
-t.Fatalf("Failed to insert test user: %v", err)
-}
+	// Insert test user and task
+	_, err = testDB.Exec(`INSERT INTO users (id, username, password, role) VALUES (1, 'testuser', 'pass', 'student')`)
+	if err != nil {
+		t.Fatalf("Failed to insert test user: %v", err)
+	}
 
-_, err = testDB.Exec(`INSERT INTO tasks (title, owner_id, created_by, task_type) VALUES ('Test Task', 1, 1, 'reading')`)
-if err != nil {
-t.Fatalf("Failed to insert test task: %v", err)
-}
+	_, err = testDB.Exec(`INSERT INTO tasks (title, owner_id, created_by, task_type) VALUES ('Test Task', 1, 1, 'reading')`)
+	if err != nil {
+		t.Fatalf("Failed to insert test task: %v", err)
+	}
 
-// Verify that demo-presentation is rejected before migration
-_, err = testDB.Exec(`INSERT INTO tasks (title, owner_id, created_by, task_type) VALUES ('Demo Task', 1, 1, 'demo-presentation')`)
-if err == nil {
-t.Fatal("Expected demo-presentation to be rejected before migration, but it was accepted")
-}
+	// Verify that demo-presentation is rejected before migration
+	_, err = testDB.Exec(`INSERT INTO tasks (title, owner_id, created_by, task_type) VALUES ('Demo Task', 1, 1, 'demo-presentation')`)
+	if err == nil {
+		t.Fatal("Expected demo-presentation to be rejected before migration, but it was accepted")
+	}
 
-// Run the migration
-db = testDB
-if err := migrateTaskTypeConstraint(); err != nil {
-t.Fatalf("Migration failed: %v", err)
-}
+	// Run the migration
+	db = testDB
+	if err := migrateTaskTypeConstraint(); err != nil {
+		t.Fatalf("Migration failed: %v", err)
+	}
 
-// Verify old data is preserved
-var count int
-err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE title = 'Test Task'").Scan(&count)
-if err != nil {
-t.Fatalf("Failed to query test task: %v", err)
-}
-if count != 1 {
-t.Fatal("Test task data was lost during migration!")
-}
+	// Verify old data is preserved
+	var count int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE title = 'Test Task'").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query test task: %v", err)
+	}
+	if count != 1 {
+		t.Fatal("Test task data was lost during migration!")
+	}
 
-// Test that we can now insert demo-presentation
-_, err = testDB.Exec(`INSERT INTO tasks (title, owner_id, created_by, task_type) VALUES ('Demo Task', 1, 1, 'demo-presentation')`)
-if err != nil {
-t.Fatalf("Failed to insert demo-presentation after migration: %v", err)
-}
+	// Test that we can now insert demo-presentation
+	_, err = testDB.Exec(`INSERT INTO tasks (title, owner_id, created_by, task_type) VALUES ('Demo Task', 1, 1, 'demo-presentation')`)
+	if err != nil {
+		t.Fatalf("Failed to insert demo-presentation after migration: %v", err)
+	}
 
-// Verify the task was inserted
-err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE task_type = 'demo-presentation'").Scan(&count)
-if err != nil {
-t.Fatalf("Failed to query demo-presentation task: %v", err)
-}
-if count != 1 {
-t.Errorf("Expected 1 demo-presentation task after migration, got %d", count)
-}
+	// Verify the task was inserted
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE task_type = 'demo-presentation'").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query demo-presentation task: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Expected 1 demo-presentation task after migration, got %d", count)
+	}
 }

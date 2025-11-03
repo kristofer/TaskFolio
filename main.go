@@ -1604,13 +1604,13 @@ func deleteGroupTaskHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Error getting rows affected: %v", err)
 	}
-	
+
 	if rowsAffected == 0 {
 		log.Printf("Warning: No tasks were deleted for task '%s' created by user %d with cohort_id '%s'", taskTitle, createdBy, cohortID)
 		http.Error(w, "Task not found or already deleted", http.StatusNotFound)
 		return
 	}
-	
+
 	log.Printf("Deleted %d task instances for task '%s' created by user %d", rowsAffected, taskTitle, createdBy)
 
 	http.Redirect(w, r, "/tasks/stats", http.StatusSeeOther)
@@ -1746,13 +1746,13 @@ func editGroupTaskHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Error getting rows affected: %v", err)
 	}
-	
+
 	if rowsAffected == 0 {
 		log.Printf("Warning: No tasks were updated for task '%s' created by user %d with cohort_id '%s'", oldTitle, createdBy, cohortID)
 		http.Error(w, "Task not found or no changes made", http.StatusNotFound)
 		return
 	}
-	
+
 	log.Printf("Updated %d task instances for task '%s' created by user %d", rowsAffected, oldTitle, createdBy)
 
 	http.Redirect(w, r, "/tasks/stats", http.StatusSeeOther)
