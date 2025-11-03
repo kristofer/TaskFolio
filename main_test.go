@@ -3746,3 +3746,290 @@ func TestGroupTasksRetrieval(t *testing.T) {
 		}
 	}
 }
+
+func TestDeleteGroupTask(t *testing.T) {
+	testDB := createTestDB(t)
+	defer testDB.Close()
+
+	// Create instructor
+	result, err := testDB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+		"instructor1", "password123", "instructor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	instructorID, _ := result.LastInsertId()
+
+	// Create students in Java11.2 cohort
+	student1Result, err := testDB.Exec("INSERT INTO users (username, password, role, cohort_name) VALUES (?, ?, ?, ?)",
+		"student1", "password123", "student", "Java11.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	student1ID, _ := student1Result.LastInsertId()
+
+	student2Result, err := testDB.Exec("INSERT INTO users (username, password, role, cohort_name) VALUES (?, ?, ?, ?)",
+		"student2", "password123", "student", "Java11.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	student2ID, _ := student2Result.LastInsertId()
+
+	student3Result, err := testDB.Exec("INSERT INTO users (username, password, role, cohort_name) VALUES (?, ?, ?, ?)",
+		"student3", "password123", "student", "Java11.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	student3ID, _ := student3Result.LastInsertId()
+
+	// Create a task for all students in the cohort
+	taskTitle := "Complete Lab 5"
+	taskDescription := "Complete all exercises in Lab 5"
+	dueDate := "2025-12-01"
+	taskType := "individual-programming-lab"
+
+	for _, studentID := range []int64{student1ID, student2ID, student3ID} {
+		_, err = testDB.Exec(`
+			INSERT INTO tasks (title, description, due_date, status, owner_id, created_by, task_type, cohort_id, created_at)
+			VALUES (?, ?, ?, 'pending', ?, ?, ?, 'Java11.2', datetime('now'))
+		`, taskTitle, taskDescription, dueDate, studentID, instructorID, taskType)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Verify tasks were created
+	var count int
+	err = testDB.QueryRow(`
+		SELECT COUNT(*) FROM tasks
+		WHERE title = ? AND created_by = ? AND cohort_id = 'Java11.2'
+	`, taskTitle, instructorID).Scan(&count)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 3 {
+		t.Fatalf("Expected 3 tasks to be created, got %d", count)
+	}
+
+	// Simulate deletion using the same logic as deleteGroupTaskHandler
+	deleteResult, err := testDB.Exec(`
+		DELETE FROM tasks
+		WHERE title = ? AND created_by = ? AND COALESCE(cohort_id, '') = ?
+	`, taskTitle, instructorID, "Java11.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rowsAffected, _ := deleteResult.RowsAffected()
+	if rowsAffected != 3 {
+		t.Errorf("Expected 3 tasks to be deleted, got %d", rowsAffected)
+	}
+
+	// Verify all tasks were deleted
+	err = testDB.QueryRow(`
+		SELECT COUNT(*) FROM tasks
+		WHERE title = ? AND created_by = ? AND cohort_id = 'Java11.2'
+	`, taskTitle, instructorID).Scan(&count)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Errorf("Expected 0 tasks after deletion, got %d", count)
+	}
+}
+
+func TestEditGroupTask(t *testing.T) {
+	testDB := createTestDB(t)
+	defer testDB.Close()
+
+	// Create instructor
+	result, err := testDB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+		"instructor1", "password123", "instructor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	instructorID, _ := result.LastInsertId()
+
+	// Create students in Java11.2 cohort
+	student1Result, err := testDB.Exec("INSERT INTO users (username, password, role, cohort_name) VALUES (?, ?, ?, ?)",
+		"student1", "password123", "student", "Java11.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	student1ID, _ := student1Result.LastInsertId()
+
+	student2Result, err := testDB.Exec("INSERT INTO users (username, password, role, cohort_name) VALUES (?, ?, ?, ?)",
+		"student2", "password123", "student", "Java11.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	student2ID, _ := student2Result.LastInsertId()
+
+	student3Result, err := testDB.Exec("INSERT INTO users (username, password, role, cohort_name) VALUES (?, ?, ?, ?)",
+		"student3", "password123", "student", "Java11.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	student3ID, _ := student3Result.LastInsertId()
+
+	// Create a task for all students in the cohort
+	taskTitle := "Complete Lab 5"
+	taskDescription := "Complete all exercises in Lab 5"
+	dueDate := "2025-12-01"
+	taskType := "individual-programming-lab"
+	resourceURL := "https://github.com/example/lab5"
+
+	for _, studentID := range []int64{student1ID, student2ID, student3ID} {
+		_, err = testDB.Exec(`
+			INSERT INTO tasks (title, description, due_date, status, owner_id, created_by, task_type, resource_url, cohort_id, created_at)
+			VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, 'Java11.2', datetime('now'))
+		`, taskTitle, taskDescription, dueDate, studentID, instructorID, taskType, resourceURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Simulate edit using the same logic as editGroupTaskHandler
+	newTitle := "Complete Lab 5 - Updated"
+	newDescription := "Complete all exercises in Lab 5 - Updated instructions"
+	newDueDate := "2025-12-15"
+	newTaskType := "group-programming-project"
+	newResourceURL := "https://github.com/example/lab5-updated"
+
+	updateResult, err := testDB.Exec(`
+		UPDATE tasks
+		SET title = ?, description = ?, due_date = ?, task_type = ?, resource_url = ?
+		WHERE title = ? AND created_by = ? AND COALESCE(cohort_id, '') = ?
+	`, newTitle, newDescription, newDueDate, newTaskType, newResourceURL, taskTitle, instructorID, "Java11.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rowsAffected, _ := updateResult.RowsAffected()
+	if rowsAffected != 3 {
+		t.Errorf("Expected 3 tasks to be updated, got %d", rowsAffected)
+	}
+
+	// Verify all tasks were updated
+	rows, err := testDB.Query(`
+		SELECT title, description, due_date, task_type, resource_url
+		FROM tasks
+		WHERE created_by = ? AND cohort_id = 'Java11.2'
+		ORDER BY owner_id
+	`, instructorID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		var title, description, dueDate, taskType, resourceURL string
+		err := rows.Scan(&title, &description, &dueDate, &taskType, &resourceURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if title != newTitle {
+			t.Errorf("Expected title '%s', got '%s'", newTitle, title)
+		}
+		if description != newDescription {
+			t.Errorf("Expected description '%s', got '%s'", newDescription, description)
+		}
+		if dueDate != newDueDate {
+			t.Errorf("Expected due date '%s', got '%s'", newDueDate, dueDate)
+		}
+		if taskType != newTaskType {
+			t.Errorf("Expected task type '%s', got '%s'", newTaskType, taskType)
+		}
+		if resourceURL != newResourceURL {
+			t.Errorf("Expected resource URL '%s', got '%s'", newResourceURL, resourceURL)
+		}
+		count++
+	}
+
+	if count != 3 {
+		t.Errorf("Expected 3 tasks to be updated, got %d", count)
+	}
+}
+
+func TestDeleteGroupTaskWithEmptyCohortID(t *testing.T) {
+	testDB := createTestDB(t)
+	defer testDB.Close()
+
+	// Create instructor
+	result, err := testDB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+		"instructor1", "password123", "instructor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	instructorID, _ := result.LastInsertId()
+
+	// Create students with no cohort
+	student1Result, err := testDB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+		"student1", "password123", "student")
+	if err != nil {
+		t.Fatal(err)
+	}
+	student1ID, _ := student1Result.LastInsertId()
+
+	student2Result, err := testDB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+		"student2", "password123", "student")
+	if err != nil {
+		t.Fatal(err)
+	}
+	student2ID, _ := student2Result.LastInsertId()
+
+	// Create a task for all students (no cohort - assigned to "all students")
+	taskTitle := "General Assignment"
+	taskDescription := "Complete this general assignment"
+	dueDate := "2025-12-01"
+
+	for _, studentID := range []int64{student1ID, student2ID} {
+		_, err = testDB.Exec(`
+			INSERT INTO tasks (title, description, due_date, status, owner_id, created_by, created_at)
+			VALUES (?, ?, ?, 'pending', ?, ?, datetime('now'))
+		`, taskTitle, taskDescription, dueDate, studentID, instructorID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Verify tasks were created
+	var count int
+	err = testDB.QueryRow(`
+		SELECT COUNT(*) FROM tasks
+		WHERE title = ? AND created_by = ? AND COALESCE(cohort_id, '') = ''
+	`, taskTitle, instructorID).Scan(&count)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("Expected 2 tasks to be created, got %d", count)
+	}
+
+	// Simulate deletion using the same logic as deleteGroupTaskHandler
+	deleteResult, err := testDB.Exec(`
+		DELETE FROM tasks
+		WHERE title = ? AND created_by = ? AND COALESCE(cohort_id, '') = ?
+	`, taskTitle, instructorID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rowsAffected, _ := deleteResult.RowsAffected()
+	if rowsAffected != 2 {
+		t.Errorf("Expected 2 tasks to be deleted, got %d", rowsAffected)
+	}
+
+	// Verify all tasks were deleted
+	err = testDB.QueryRow(`
+		SELECT COUNT(*) FROM tasks
+		WHERE title = ? AND created_by = ?
+	`, taskTitle, instructorID).Scan(&count)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Errorf("Expected 0 tasks after deletion, got %d", count)
+	}
+}

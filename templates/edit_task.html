@@ -113,9 +113,21 @@
 
     <div class="container">
         <div class="form-card">
+            {{if .IsGroup}}
+            <h2>Edit Group Task</h2>
+            <p style="color: #666; margin-bottom: 20px;">This will update all instances of this task for all assigned students.</p>
+            {{else}}
             <h2>Edit Task</h2>
+            {{end}}
             
+            {{if .IsGroup}}
+            <form method="POST" action="/tasks/edit-group">
+                <input type="hidden" name="old_title" value="{{.Task.Title}}">
+                <input type="hidden" name="created_by" value="{{.Task.CreatedBy}}">
+                <input type="hidden" name="cohort_id" value="{{.CohortID}}">
+            {{else}}
             <form method="POST" action="/tasks/edit?id={{.Task.ID}}">
+            {{end}}
                 <div class="form-group">
                     <label for="title">Task Title *</label>
                     <input type="text" id="title" name="title" value="{{.Task.Title}}" required>
@@ -131,6 +143,7 @@
                     <input type="date" id="due_date" name="due_date" value="{{.Task.DueDate}}">
                 </div>
                 
+                {{if not .IsGroup}}
                 <div class="form-group">
                     <label for="status">Status</label>
                     <select id="status" name="status">
@@ -139,6 +152,7 @@
                         <option value="completed" {{if eq .Task.Status "completed"}}selected{{end}}>Completed</option>
                     </select>
                 </div>
+                {{end}}
                 
                 <div class="form-group">
                     <label for="task_type">Task Type</label>
@@ -161,7 +175,11 @@
                 
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary">Update Task</button>
+                    {{if .IsGroup}}
+                    <a href="/tasks/stats" class="btn">Cancel</a>
+                    {{else}}
                     <a href="/" class="btn">Cancel</a>
+                    {{end}}
                 </div>
             </form>
         </div>
