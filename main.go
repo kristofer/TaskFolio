@@ -651,7 +651,7 @@ func importStudentsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		lineNum++
-		
+
 		// Skip empty lines
 		if len(record) == 0 || (len(record) == 1 && strings.TrimSpace(record[0]) == "") {
 			continue
@@ -837,19 +837,19 @@ func groupDetailHandler(w http.ResponseWriter, r *http.Request) {
 			placeholders[i] = "?"
 			args[i] = studentID
 		}
-		
+
 		query := fmt.Sprintf(`
 			SELECT id, username, COALESCE(cohort_name, ''), role
 			FROM users WHERE id IN (%s) ORDER BY username
 		`, strings.Join(placeholders, ","))
-		
+
 		rows, err := db.Query(query, args...)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		defer rows.Close()
-		
+
 		for rows.Next() {
 			var s User
 			rows.Scan(&s.ID, &s.Username, &s.CohortName, &s.Role)
@@ -1894,7 +1894,7 @@ func importTasksHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Validate task type if provided
 		validTaskTypes := map[string]bool{
-			"group-programming-project": true,
+			"group-programming-project":  true,
 			"individual-programming-lab": true,
 			"reading":                    true,
 			"document":                   true,
@@ -2315,7 +2315,7 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 		var groups []Group
 		cohorts := make(map[string]bool)
 		filteredStudents := r.URL.Query().Get("filtered_students")
-		
+
 		if user.Role == "instructor" {
 			rows, err := db.Query("SELECT id, username, COALESCE(cohort_name, '') FROM users WHERE role = 'student'")
 			if err == nil {
@@ -2329,7 +2329,7 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
-			
+
 			// Get all active groups
 			groups, _ = getAllGroups()
 		}
@@ -2339,7 +2339,7 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 		for cohort := range cohorts {
 			cohortList = append(cohortList, cohort)
 		}
-		
+
 		// Get pre-selected group ID if provided
 		selectedGroupID := r.URL.Query().Get("group_id")
 
@@ -2385,7 +2385,7 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 			studentIDStrs := strings.Split(filteredStudents, ",")
 			var studentIDs []int
 			var args []interface{}
-			
+
 			for _, idStr := range studentIDStrs {
 				studentID, err := strconv.Atoi(strings.TrimSpace(idStr))
 				if err != nil {
@@ -2395,19 +2395,19 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 				studentIDs = append(studentIDs, studentID)
 				args = append(args, studentID)
 			}
-			
+
 			if len(studentIDs) == 0 {
 				http.Error(w, "No valid student IDs provided", http.StatusBadRequest)
 				return
 			}
-			
+
 			// Build placeholders for IN clause - simpler approach
 			placeholderSlice := make([]string, len(studentIDs))
 			for i := range placeholderSlice {
 				placeholderSlice[i] = "?"
 			}
 			placeholders := strings.Join(placeholderSlice, ",")
-			
+
 			// Validate all student IDs at once
 			query := fmt.Sprintf("SELECT id FROM users WHERE id IN (%s) AND role = 'student'", placeholders)
 			rows, err := db.Query(query, args...)
@@ -2416,7 +2416,7 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			defer rows.Close()
-			
+
 			validStudentIDs := make(map[int]bool)
 			for rows.Next() {
 				var id int
@@ -2426,7 +2426,7 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				validStudentIDs[id] = true
 			}
-			
+
 			// Check if any invalid IDs were provided
 			invalidCount := 0
 			for _, id := range studentIDs {
@@ -2435,12 +2435,12 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 					log.Printf("Invalid or non-student ID: %d", id)
 				}
 			}
-			
+
 			if invalidCount > 0 && len(validStudentIDs) == 0 {
 				http.Error(w, "None of the provided IDs are valid students", http.StatusBadRequest)
 				return
 			}
-			
+
 			// Create tasks for valid students
 			for id := range validStudentIDs {
 				_, err = db.Exec(`
@@ -2451,15 +2451,15 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 					log.Printf("Failed to create task for student %d: %v", id, err)
 				}
 			}
-			
+
 			if invalidCount > 0 {
 				log.Printf("Warning: %d invalid student IDs were skipped during task creation", invalidCount)
 			}
-			
+
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-		
+
 		// Check if assigning to a group
 		if len(assignedTo) > 6 && assignedTo[:6] == "group:" {
 			groupIDStr := assignedTo[6:]
@@ -2468,14 +2468,14 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Invalid group ID", http.StatusBadRequest)
 				return
 			}
-			
+
 			// Get group members
 			group, err := getGroupByID(groupID)
 			if err != nil {
 				http.Error(w, "Group not found", http.StatusNotFound)
 				return
 			}
-			
+
 			// Create tasks for each group member
 			for _, studentID := range group.Students {
 				_, err := db.Exec(`
@@ -2486,11 +2486,11 @@ func addTaskHandler(w http.ResponseWriter, r *http.Request) {
 					log.Printf("Failed to create task for student %d in group %d: %v", studentID, groupID, err)
 				}
 			}
-			
+
 			http.Redirect(w, r, "/", http.StatusSeeOther)
 			return
 		}
-		
+
 		// Check if assigning to a cohort
 		if len(assignedTo) > 7 && assignedTo[:7] == "cohort:" {
 			cohortID = assignedTo[7:]
@@ -2750,24 +2750,24 @@ func getGroupByID(id int) (Group, error) {
 	var group Group
 	var projectURL sql.NullString
 	var description sql.NullString
-	
+
 	err := db.QueryRow(`
 		SELECT id, name, COALESCE(description, ''), COALESCE(project_url, ''), 
 		       COALESCE(is_active, 1), created_at 
 		FROM groups WHERE id = ?
 	`, id).Scan(&group.ID, &group.Name, &description, &projectURL, &group.IsActive, &group.CreatedAt)
-	
+
 	if err != nil {
 		return group, err
 	}
-	
+
 	if description.Valid {
 		group.Description = description.String
 	}
 	if projectURL.Valid {
 		group.ProjectURL = projectURL.String
 	}
-	
+
 	// Get student IDs for this group
 	rows, err := db.Query(`
 		SELECT student_id FROM group_members WHERE group_id = ?
@@ -2776,7 +2776,7 @@ func getGroupByID(id int) (Group, error) {
 		return group, err
 	}
 	defer rows.Close()
-	
+
 	group.Students = []int{}
 	for rows.Next() {
 		var studentID int
@@ -2785,7 +2785,7 @@ func getGroupByID(id int) (Group, error) {
 		}
 		group.Students = append(group.Students, studentID)
 	}
-	
+
 	return group, nil
 }
 
@@ -2800,33 +2800,33 @@ func getAllGroups() ([]Group, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	var groups []Group
 	for rows.Next() {
 		var group Group
 		var projectURL sql.NullString
 		var description sql.NullString
-		
+
 		err := rows.Scan(&group.ID, &group.Name, &description, &projectURL, &group.IsActive, &group.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		if description.Valid {
 			group.Description = description.String
 		}
 		if projectURL.Valid {
 			group.ProjectURL = projectURL.String
 		}
-		
+
 		// Get student count for this group
 		var count int
 		db.QueryRow(`SELECT COUNT(*) FROM group_members WHERE group_id = ?`, group.ID).Scan(&count)
 		group.Students = make([]int, count) // Just track the count for list view
-		
+
 		groups = append(groups, group)
 	}
-	
+
 	return groups, nil
 }
 
