@@ -102,8 +102,10 @@ func initDB() error {
 			cohort_id TEXT,
 			in_progress_date DATETIME,
 			done_date DATETIME,
+			group_id INTEGER,
 			FOREIGN KEY (owner_id) REFERENCES users(id),
-			FOREIGN KEY (created_by) REFERENCES users(id)
+			FOREIGN KEY (created_by) REFERENCES users(id),
+			FOREIGN KEY (group_id) REFERENCES groups(id)
 		)
 	`)
 	if err != nil {
