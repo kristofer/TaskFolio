@@ -384,12 +384,19 @@ func migrateTaskTypeConstraint() error {
 }
 
 // containsOldTaskTypes checks if the table schema contains old task type values
+// or is missing new task types like 'demo-presentation'
 func containsOldTaskTypes(sql string) bool {
 	oldTypes := []string{"'coding'", "'submission'", "'document-creation'"}
 	for _, oldType := range oldTypes {
 		if strings.Contains(sql, oldType) {
 			return true
 		}
+	}
+	// Also check if the schema is missing 'demo-presentation'
+	// This handles cases where the database was created after old types were removed
+	// but before 'demo-presentation' was added
+	if strings.Contains(sql, "task_type") && !strings.Contains(sql, "'demo-presentation'") {
+		return true
 	}
 	return false
 }
@@ -1597,13 +1604,13 @@ func deleteGroupTaskHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Error getting rows affected: %v", err)
 	}
-	
+
 	if rowsAffected == 0 {
 		log.Printf("Warning: No tasks were deleted for task '%s' created by user %d with cohort_id '%s'", taskTitle, createdBy, cohortID)
 		http.Error(w, "Task not found or already deleted", http.StatusNotFound)
 		return
 	}
-	
+
 	log.Printf("Deleted %d task instances for task '%s' created by user %d", rowsAffected, taskTitle, createdBy)
 
 	http.Redirect(w, r, "/tasks/stats", http.StatusSeeOther)
@@ -1739,13 +1746,13 @@ func editGroupTaskHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("Error getting rows affected: %v", err)
 	}
-	
+
 	if rowsAffected == 0 {
 		log.Printf("Warning: No tasks were updated for task '%s' created by user %d with cohort_id '%s'", oldTitle, createdBy, cohortID)
 		http.Error(w, "Task not found or no changes made", http.StatusNotFound)
 		return
 	}
-	
+
 	log.Printf("Updated %d task instances for task '%s' created by user %d", rowsAffected, oldTitle, createdBy)
 
 	http.Redirect(w, r, "/tasks/stats", http.StatusSeeOther)

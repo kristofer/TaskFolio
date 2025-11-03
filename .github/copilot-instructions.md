@@ -60,7 +60,7 @@ These limitations are intentional for learning purposes but must be addressed be
 - `created_by`: User who created the task (foreign key to users)
 - `assigned_to`: Comma-separated usernames for group assignments
 - `created_at`: Creation timestamp
-- `task_type`: One of 'group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev', or empty string
+- `task_type`: One of 'group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev', 'demo-presentation', or empty string
 - `resource_url`: URL pointing to task resources
 - `cohort_id`: Cohort name for cohort-based assignments
 - `in_progress_date`: Timestamp when task moved to in_progress
@@ -192,10 +192,15 @@ docker compose down            # Stop
 5. Add tests for the new field
 
 ### Adding a New Task Type
-1. Update the `task_type` CHECK constraint in the tasks table creation
-2. Add migration logic to update existing CHECK constraint
-3. Update any dropdown/select elements in templates
-4. Add test coverage for the new type
+**⚠️ IMPORTANT**: When adding new task types, you MUST update the database CHECK constraint AND the migration logic to ensure existing databases are updated properly.
+
+1. Update the `task_type` CHECK constraint in the tasks table creation in `initDB()` (line ~100)
+2. Update the `task_type` CHECK constraint in `migrateTaskTypeConstraint()` (line ~330)
+3. Update the `containsOldTaskTypes()` function to detect when databases are missing the new task type (line ~386)
+   - This ensures that existing databases without the new type will trigger migration
+4. Update any dropdown/select elements in templates to include the new option
+5. Add test coverage for the new type
+6. Update this documentation to list the new task type in the Tasks Table section above
 
 ### Adding a New API Endpoint
 1. Create the handler function following the pattern: `func handlerName(w http.ResponseWriter, r *http.Request)`
