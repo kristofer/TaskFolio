@@ -47,6 +47,7 @@ type Task struct {
 	InProgressDate *time.Time // Date when task was first moved to in_progress
 	DoneDate       *time.Time // Date when task was moved to done
 	GroupID        *int       // ID of the group this task is assigned to (if any)
+	Comments       string     // User's notes and thoughts about the task
 }
 
 type Group struct {
@@ -103,6 +104,7 @@ func initDB() error {
 			in_progress_date DATETIME,
 			done_date DATETIME,
 			group_id INTEGER,
+			comments TEXT,
 			FOREIGN KEY (owner_id) REFERENCES users(id),
 			FOREIGN KEY (created_by) REFERENCES users(id),
 			FOREIGN KEY (group_id) REFERENCES groups(id)
@@ -267,6 +269,19 @@ func migrateDatabase() error {
 		log.Println("Added group_id column to tasks table")
 	}
 
+	// Check and add comments column to tasks table
+	var commentsExists int
+	err = db.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='comments'
+	`).Scan(&commentsExists)
+	if err == nil && commentsExists == 0 {
+		_, err = db.Exec(`ALTER TABLE tasks ADD COLUMN comments TEXT`)
+		if err != nil {
+			return fmt.Errorf("failed to add comments column: %v", err)
+		}
+		log.Println("Added comments column to tasks table")
+	}
+
 	// Migrate task_type CHECK constraint to new values
 	// We need to check if the old constraint exists and recreate the table if needed
 	if err := migrateTaskTypeConstraint(); err != nil {
@@ -334,8 +349,11 @@ func migrateTaskTypeConstraint() error {
 			cohort_id TEXT,
 			in_progress_date DATETIME,
 			done_date DATETIME,
+			group_id INTEGER,
+			comments TEXT,
 			FOREIGN KEY (owner_id) REFERENCES users(id),
-			FOREIGN KEY (created_by) REFERENCES users(id)
+			FOREIGN KEY (created_by) REFERENCES users(id),
+			FOREIGN KEY (group_id) REFERENCES groups(id)
 		)
 	`)
 	if err != nil {
@@ -346,8 +364,24 @@ func migrateTaskTypeConstraint() error {
 	// Old task types: 'reading', 'coding', 'submission', 'document-creation'
 	// New task types: 'group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev'
 	// Mapping: 'coding' -> 'individual-programming-lab', 'submission' -> '', 'document-creation' -> 'document'
-	_, err = tx.Exec(`
-		INSERT INTO tasks_new (id, title, description, due_date, status, owner_id, created_by, assigned_to, created_at, task_type, resource_url, cohort_id, in_progress_date, done_date)
+	
+	// Check which columns exist in the old table
+	var groupIDExists, commentsExists int
+	tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='group_id'`).Scan(&groupIDExists)
+	tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='comments'`).Scan(&commentsExists)
+	
+	// Build SELECT statement based on existing columns
+	groupIDSelect := "NULL"
+	if groupIDExists > 0 {
+		groupIDSelect = "group_id"
+	}
+	commentsSelect := "''"
+	if commentsExists > 0 {
+		commentsSelect = "COALESCE(comments, '')"
+	}
+	
+	insertSQL := fmt.Sprintf(`
+		INSERT INTO tasks_new (id, title, description, due_date, status, owner_id, created_by, assigned_to, created_at, task_type, resource_url, cohort_id, in_progress_date, done_date, group_id, comments)
 		SELECT id, title, description, due_date, status, owner_id, created_by,
 		       COALESCE(assigned_to, ''), created_at,
 		       CASE COALESCE(task_type, '')
@@ -357,9 +391,11 @@ func migrateTaskTypeConstraint() error {
 		           ELSE COALESCE(task_type, '')
 		       END,
 		       COALESCE(resource_url, ''), COALESCE(cohort_id, ''),
-		       in_progress_date, done_date
+		       in_progress_date, done_date, %s, %s
 		FROM tasks
-	`)
+	`, groupIDSelect, commentsSelect)
+	
+	_, err = tx.Exec(insertSQL)
 	if err != nil {
 		return err
 	}
@@ -1984,6 +2020,62 @@ func updateTaskStatusHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"success": true}`))
 }
 
+// updateTaskCommentsHandler handles AJAX requests to update task comments
+func updateTaskCommentsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	session, err := getSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	taskID := r.URL.Query().Get("id")
+	comments := r.FormValue("comments")
+
+	// Get task and verify ownership
+	var task Task
+	err = db.QueryRow(`
+		SELECT owner_id
+		FROM tasks WHERE id = ?
+	`, taskID).Scan(&task.OwnerID)
+
+	if err != nil {
+		http.Error(w, "Task not found", http.StatusNotFound)
+		return
+	}
+
+	// Check permissions - users can only update comments on their own tasks
+	if task.OwnerID != user.ID {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	// Update comments
+	_, err = db.Exec(`
+		UPDATE tasks
+		SET comments = ?
+		WHERE id = ?
+	`, comments, taskID)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"success": true}`))
+}
+
 // importTasksHandler handles bulk import of tasks from CSV file
 func importTasksHandler(w http.ResponseWriter, r *http.Request) {
 	session, err := getSession(r)
@@ -2416,6 +2508,7 @@ func main() {
 	http.HandleFunc("/tasks/edit", editTaskHandler)
 	http.HandleFunc("/tasks/delete", deleteTaskHandler)
 	http.HandleFunc("/tasks/update-status", updateTaskStatusHandler)
+	http.HandleFunc("/tasks/update-comments", updateTaskCommentsHandler)
 	http.HandleFunc("/tasks/import", importTasksHandler)
 	http.HandleFunc("/students", studentsHandler)
 	http.HandleFunc("/students/add", addStudentHandler)
@@ -2845,10 +2938,10 @@ func editTaskHandler(w http.ResponseWriter, r *http.Request) {
 		var task Task
 		err := db.QueryRow(`
 			SELECT id, title, description, due_date, status, owner_id, created_by,
-			       COALESCE(task_type, ''), COALESCE(resource_url, '')
+			       COALESCE(task_type, ''), COALESCE(resource_url, ''), COALESCE(comments, '')
 			FROM tasks WHERE id = ?
 		`, taskID).Scan(&task.ID, &task.Title, &task.Description, &task.DueDate,
-			&task.Status, &task.OwnerID, &task.CreatedBy, &task.TaskType, &task.ResourceURL)
+			&task.Status, &task.OwnerID, &task.CreatedBy, &task.TaskType, &task.ResourceURL, &task.Comments)
 
 		if err != nil {
 			http.Error(w, "Task not found", http.StatusNotFound)
@@ -2878,6 +2971,7 @@ func editTaskHandler(w http.ResponseWriter, r *http.Request) {
 	status := r.FormValue("status")
 	taskType := r.FormValue("task_type")
 	resourceURL := r.FormValue("resource_url")
+	comments := r.FormValue("comments")
 
 	// Verify ownership or instructor role
 	var task Task
@@ -2896,9 +2990,9 @@ func editTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, err = db.Exec(`
 		UPDATE tasks
-		SET title = ?, description = ?, due_date = ?, status = ?, task_type = ?, resource_url = ?
+		SET title = ?, description = ?, due_date = ?, status = ?, task_type = ?, resource_url = ?, comments = ?
 		WHERE id = ?
-	`, title, description, dueDate, status, taskType, resourceURL, taskID)
+	`, title, description, dueDate, status, taskType, resourceURL, comments, taskID)
 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -3093,7 +3187,7 @@ func getTasks(user User) ([]Task, error) {
 		rows, err = db.Query(`
 			SELECT id, title, description, due_date, status, owner_id, created_by, created_at,
 			       COALESCE(task_type, ''), COALESCE(resource_url, ''), COALESCE(cohort_id, ''),
-			       in_progress_date, done_date, group_id
+			       in_progress_date, done_date, group_id, COALESCE(comments, '')
 			FROM tasks
 			WHERE created_by = ? AND owner_id = ?
 			ORDER BY created_at DESC
@@ -3103,7 +3197,7 @@ func getTasks(user User) ([]Task, error) {
 		rows, err = db.Query(`
 			SELECT id, title, description, due_date, status, owner_id, created_by, created_at,
 			       COALESCE(task_type, ''), COALESCE(resource_url, ''), COALESCE(cohort_id, ''),
-			       in_progress_date, done_date, group_id
+			       in_progress_date, done_date, group_id, COALESCE(comments, '')
 			FROM tasks
 			WHERE owner_id = ?
 			ORDER BY created_at DESC
@@ -3121,7 +3215,7 @@ func getTasks(user User) ([]Task, error) {
 		var groupID sql.NullInt64
 		err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate,
 			&task.Status, &task.OwnerID, &task.CreatedBy, &task.CreatedAt,
-			&task.TaskType, &task.ResourceURL, &task.CohortID, &inProgressDate, &doneDate, &groupID)
+			&task.TaskType, &task.ResourceURL, &task.CohortID, &inProgressDate, &doneDate, &groupID, &task.Comments)
 		if err != nil {
 			return nil, err
 		}

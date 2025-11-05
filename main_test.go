@@ -57,6 +57,7 @@ func createTestDB(t *testing.T) *sql.DB {
 			in_progress_date DATETIME,
 			done_date DATETIME,
 			group_id INTEGER,
+			comments TEXT,
 			FOREIGN KEY (owner_id) REFERENCES users(id),
 			FOREIGN KEY (created_by) REFERENCES users(id),
 			FOREIGN KEY (group_id) REFERENCES groups(id)
@@ -4130,5 +4131,201 @@ FOREIGN KEY (created_by) REFERENCES users(id)
 	}
 	if count != 1 {
 		t.Errorf("Expected 1 demo-presentation task after migration, got %d", count)
+	}
+}
+
+// TestTaskComments tests the comments field functionality
+func TestTaskComments(t *testing.T) {
+	testDB := createTestDB(t)
+	defer testDB.Close()
+
+	// Insert a test user
+	_, err := testDB.Exec(`INSERT INTO users (id, username, password, role) VALUES (1, 'testuser', 'pass', 'student')`)
+	if err != nil {
+		t.Fatalf("Failed to insert test user: %v", err)
+	}
+
+	// Insert a test task with initial comments
+	_, err = testDB.Exec(`
+		INSERT INTO tasks (title, description, owner_id, created_by, comments)
+		VALUES ('Task with Comments', 'Test description', 1, 1, 'Initial comments')
+	`)
+	if err != nil {
+		t.Fatalf("Failed to insert task: %v", err)
+	}
+
+	// Verify comments were saved
+	var comments string
+	err = testDB.QueryRow("SELECT COALESCE(comments, '') FROM tasks WHERE title = 'Task with Comments'").Scan(&comments)
+	if err != nil {
+		t.Fatalf("Failed to query comments: %v", err)
+	}
+	if comments != "Initial comments" {
+		t.Errorf("Expected comments 'Initial comments', got '%s'", comments)
+	}
+
+	// Update comments
+	_, err = testDB.Exec(`
+		UPDATE tasks
+		SET comments = ?
+		WHERE title = 'Task with Comments'
+	`, "Updated comments with more details")
+	if err != nil {
+		t.Fatalf("Failed to update comments: %v", err)
+	}
+
+	// Verify updated comments
+	err = testDB.QueryRow("SELECT COALESCE(comments, '') FROM tasks WHERE title = 'Task with Comments'").Scan(&comments)
+	if err != nil {
+		t.Fatalf("Failed to query updated comments: %v", err)
+	}
+	if comments != "Updated comments with more details" {
+		t.Errorf("Expected comments 'Updated comments with more details', got '%s'", comments)
+	}
+
+	// Test that comments can be cleared
+	_, err = testDB.Exec(`
+		UPDATE tasks
+		SET comments = ''
+		WHERE title = 'Task with Comments'
+	`)
+	if err != nil {
+		t.Fatalf("Failed to clear comments: %v", err)
+	}
+
+	// Verify comments were cleared
+	err = testDB.QueryRow("SELECT COALESCE(comments, '') FROM tasks WHERE title = 'Task with Comments'").Scan(&comments)
+	if err != nil {
+		t.Fatalf("Failed to query cleared comments: %v", err)
+	}
+	if comments != "" {
+		t.Errorf("Expected empty comments, got '%s'", comments)
+	}
+}
+
+// TestCommentsMigration tests that the comments column is properly added during migration
+func TestCommentsMigration(t *testing.T) {
+	// Create a database without the comments column
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL,
+			role TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Create groups table for foreign key constraint
+	_, err = testDB.Exec(`
+		CREATE TABLE groups (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			description TEXT,
+			project_url TEXT,
+			is_active BOOLEAN DEFAULT 1,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create groups table: %v", err)
+	}
+
+	// Create tasks table WITHOUT comments column (simulating old database)
+	// Include all other columns that migrateTaskTypeConstraint expects
+	_, err = testDB.Exec(`
+		CREATE TABLE tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			description TEXT,
+			due_date TEXT,
+			status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'in_progress', 'completed', 'blocked')),
+			owner_id INTEGER NOT NULL,
+			created_by INTEGER NOT NULL,
+			assigned_to TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			task_type TEXT CHECK(task_type IN ('group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev', 'demo-presentation', '')),
+			resource_url TEXT,
+			cohort_id TEXT,
+			in_progress_date DATETIME,
+			done_date DATETIME,
+			group_id INTEGER,
+			FOREIGN KEY (owner_id) REFERENCES users(id),
+			FOREIGN KEY (created_by) REFERENCES users(id)
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create tasks table: %v", err)
+	}
+
+	// Insert test data
+	_, err = testDB.Exec(`INSERT INTO users (id, username, password, role) VALUES (1, 'testuser', 'pass', 'student')`)
+	if err != nil {
+		t.Fatalf("Failed to insert test user: %v", err)
+	}
+
+	_, err = testDB.Exec(`INSERT INTO tasks (title, owner_id, created_by) VALUES ('Old Task', 1, 1)`)
+	if err != nil {
+		t.Fatalf("Failed to insert test task: %v", err)
+	}
+
+	// Verify comments column doesn't exist yet
+	var commentsExists int
+	err = testDB.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='comments'`).Scan(&commentsExists)
+	if err != nil {
+		t.Fatalf("Failed to check for comments column: %v", err)
+	}
+	if commentsExists != 0 {
+		t.Fatal("Comments column should not exist yet")
+	}
+
+	// Run migration
+	db = testDB
+	if err := migrateDatabase(); err != nil {
+		t.Fatalf("Migration failed: %v", err)
+	}
+
+	// Verify comments column now exists
+	err = testDB.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='comments'`).Scan(&commentsExists)
+	if err != nil {
+		t.Fatalf("Failed to check for comments column after migration: %v", err)
+	}
+	if commentsExists != 1 {
+		t.Fatal("Comments column should exist after migration")
+	}
+
+	// Verify old data is preserved
+	var count int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE title = 'Old Task'").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query old task: %v", err)
+	}
+	if count != 1 {
+		t.Fatal("Old task data was lost during migration!")
+	}
+
+	// Test that we can now add comments to the migrated task
+	_, err = testDB.Exec(`UPDATE tasks SET comments = 'Added after migration' WHERE title = 'Old Task'`)
+	if err != nil {
+		t.Fatalf("Failed to add comments after migration: %v", err)
+	}
+
+	// Verify comments were added
+	var comments string
+	err = testDB.QueryRow("SELECT COALESCE(comments, '') FROM tasks WHERE title = 'Old Task'").Scan(&comments)
+	if err != nil {
+		t.Fatalf("Failed to query comments: %v", err)
+	}
+	if comments != "Added after migration" {
+		t.Errorf("Expected comments 'Added after migration', got '%s'", comments)
 	}
 }

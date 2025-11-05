@@ -642,6 +642,11 @@
                     <div class="modal-field-value" id="modalGroup"></div>
                 </div>
                 <div class="modal-field">
+                    <div class="modal-field-label">Comments / Notes</div>
+                    <textarea id="modalComments" class="form-input" rows="6" placeholder="Add your thoughts, notes, or comments about this task..."></textarea>
+                    <button class="btn btn-primary" onclick="saveComments()" style="margin-top: 10px;">Save Comments</button>
+                </div>
+                <div class="modal-field">
                     <div class="modal-field-label">Created Date</div>
                     <div class="modal-field-value" id="modalCreatedAt"></div>
                 </div>
@@ -692,6 +697,10 @@
                         <label class="modal-field-label" for="editResourceURL">Resource URL</label>
                         <input type="text" id="editResourceURL" name="resource_url" class="form-input">
                     </div>
+                    <div class="modal-field">
+                        <label class="modal-field-label" for="editComments">Comments / Notes</label>
+                        <textarea id="editComments" name="comments" class="form-input" rows="4" placeholder="Add your thoughts, notes, or comments..."></textarea>
+                    </div>
                     <input type="hidden" id="editStatus" name="status">
                     <div class="modal-footer">
                         <button type="submit" class="btn btn-primary">Save Changes</button>
@@ -735,7 +744,8 @@
                 resourceURL: "{{.ResourceURL}}",
                 groupName: "{{.GroupName}}",
                 createdBy: {{.CreatedBy}},
-                createdAt: "{{.CreatedAt.Format "Jan 2, 2006"}}"{{if .DoneDate}},
+                createdAt: "{{.CreatedAt.Format "Jan 2, 2006"}}",
+                comments: "{{.Comments}}"{{if .DoneDate}},
                 doneDate: "{{.DoneDate.Format "2006-01-02T15:04:05Z07:00"}}"{{end}}
             },
             {{end}}
@@ -800,6 +810,9 @@
                 document.getElementById('modalGroupField').style.display = 'none';
             }
 
+            // Comments
+            document.getElementById('modalComments').value = task.comments || '';
+
             document.getElementById('modalCreatedAt').textContent = task.createdAt;
 
             // Show/hide edit and delete buttons if user created this task
@@ -819,6 +832,41 @@
             document.getElementById('taskModal').style.display = 'none';
         }
 
+        // Save comments function - allows quick update of comments without full edit
+        function saveComments() {
+            if (!window.currentTaskId) return;
+            
+            const comments = document.getElementById('modalComments').value;
+            const params = new URLSearchParams();
+            params.append('comments', comments);
+            
+            fetch('/tasks/update-comments?id=' + encodeURIComponent(window.currentTaskId), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: params.toString()
+            })
+            .then(response => {
+                if (response.ok) {
+                    // Update the task in the local tasks array
+                    const task = tasks.find(t => t.id == window.currentTaskId);
+                    if (task) {
+                        task.comments = comments;
+                    }
+                    alert('Comments saved successfully!');
+                } else {
+                    return response.text().then(text => {
+                        throw new Error(text || 'Failed to save comments');
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error saving comments: ' + (error.message || 'Please try again'));
+            });
+        }
+
         // Edit modal functions
         let currentTaskForEdit = null;
 
@@ -835,6 +883,7 @@
             document.getElementById('editTaskType').value = task.taskType || '';
             document.getElementById('editDueDate').value = task.dueDate || '';
             document.getElementById('editResourceURL').value = task.resourceURL || '';
+            document.getElementById('editComments').value = task.comments || '';
             document.getElementById('editStatus').value = task.status;
 
             // Close task details modal and show edit modal
