@@ -745,7 +745,8 @@
                 groupName: "{{.GroupName}}",
                 createdBy: {{.CreatedBy}},
                 createdAt: "{{.CreatedAt.Format "Jan 2, 2006"}}",
-                comments: "{{.Comments}}"{{if .DoneDate}},
+                comments: "{{.Comments}}",
+                displayOrder: {{.DisplayOrder}}{{if .DoneDate}},
                 doneDate: "{{.DoneDate.Format "2006-01-02T15:04:05Z07:00"}}"{{end}}
             },
             {{end}}
@@ -976,26 +977,44 @@
                 list.innerHTML = '';
             });
 
-            // Sort completed tasks to show newest first (by done_date)
-            const sortedTasks = [...tasks].sort((a, b) => {
-                if (a.status === 'completed' && b.status === 'completed') {
-                    // Sort by done_date, most recent first
-                    if (a.doneDate && b.doneDate) {
+            // Group tasks by status
+            const tasksByStatus = {
+                pending: [],
+                blocked: [],
+                in_progress: [],
+                completed: []
+            };
+
+            tasks.forEach(task => {
+                if (tasksByStatus[task.status]) {
+                    tasksByStatus[task.status].push(task);
+                }
+            });
+
+            // Sort tasks within each status by display_order, then by created_at for completed tasks
+            Object.keys(tasksByStatus).forEach(status => {
+                tasksByStatus[status].sort((a, b) => {
+                    // Primary sort by display_order
+                    if (a.displayOrder !== b.displayOrder) {
+                        return a.displayOrder - b.displayOrder;
+                    }
+                    // Secondary sort for completed tasks by done_date (newest first)
+                    if (status === 'completed' && a.doneDate && b.doneDate) {
                         return new Date(b.doneDate) - new Date(a.doneDate);
                     }
                     return 0;
-                }
-                return 0;
+                });
             });
 
             // Add tasks to appropriate columns
-            sortedTasks.forEach(task => {
-                const taskCard = createTaskCard(task);
-                const list = document.getElementById(`list-${task.status}`);
-                if (list) {
-                    // Add to bottom of columns (completed tasks are already sorted newest first)
-                    list.appendChild(taskCard);
-                }
+            Object.keys(tasksByStatus).forEach(status => {
+                tasksByStatus[status].forEach(task => {
+                    const taskCard = createTaskCard(task);
+                    const list = document.getElementById(`list-${status}`);
+                    if (list) {
+                        list.appendChild(taskCard);
+                    }
+                });
             });
 
             // Update counts
@@ -1096,9 +1115,11 @@
         }
 
         let draggedElement = null;
+        let draggedFromColumn = null;
 
         function handleDragStart(e) {
             draggedElement = this;
+            draggedFromColumn = this.closest('.task-list');
             this.classList.add('dragging');
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/html', this.innerHTML);
@@ -1106,6 +1127,10 @@
 
         function handleDragEnd(e) {
             this.classList.remove('dragging');
+            // Remove all drag-over indicators
+            document.querySelectorAll('.task-card').forEach(card => {
+                card.classList.remove('drag-over');
+            });
         }
 
         // Setup drop zones
@@ -1120,26 +1145,66 @@
                 e.preventDefault();
             }
             e.dataTransfer.dropEffect = 'move';
-            this.style.background = '#f3f4f6';
+            
+            // Get the element being dragged over
+            const afterElement = getDragAfterElement(this, e.clientY);
+            
+            if (draggedElement) {
+                if (afterElement == null) {
+                    this.appendChild(draggedElement);
+                } else {
+                    this.insertBefore(draggedElement, afterElement);
+                }
+            }
+            
             return false;
         }
 
+        function getDragAfterElement(container, y) {
+            const draggableElements = [...container.querySelectorAll('.task-card:not(.dragging)')];
+            
+            return draggableElements.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset: offset, element: child };
+                } else {
+                    return closest;
+                }
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+
         function handleDragLeave(e) {
-            this.style.background = '';
+            // Only clear background if we're leaving the list entirely
+            if (e.target.classList.contains('task-list')) {
+                e.target.style.background = '';
+            }
         }
 
         function handleDrop(e) {
             if (e.stopPropagation) {
                 e.stopPropagation();
             }
-            this.style.background = '';
+            if (e.preventDefault) {
+                e.preventDefault();
+            }
 
             if (draggedElement) {
                 const taskId = draggedElement.dataset.taskId;
-                const newStatus = this.closest('.kanban-column').dataset.status;
+                const targetColumn = this.closest('.kanban-column');
+                const newStatus = targetColumn.dataset.status;
+                const sourceColumn = draggedFromColumn.closest('.kanban-column');
+                const oldStatus = sourceColumn.dataset.status;
                 
-                // Update task status via AJAX
-                updateTaskStatus(taskId, newStatus);
+                // Check if status changed or just reordered
+                if (oldStatus !== newStatus) {
+                    // Status changed - update status
+                    updateTaskStatus(taskId, newStatus);
+                } else {
+                    // Same column - update order
+                    updateTaskOrder(targetColumn, newStatus);
+                }
             }
 
             return false;
@@ -1170,6 +1235,46 @@
             .catch(error => {
                 console.error('Error:', error);
                 alert('Failed to update task status');
+                renderTasks(); // Revert to original state
+            });
+        }
+
+        function updateTaskOrder(column, status) {
+            const taskList = column.querySelector('.task-list');
+            const taskCards = [...taskList.querySelectorAll('.task-card')];
+            const taskIds = taskCards.map(card => parseInt(card.dataset.taskId));
+            
+            // Send the new order to the server
+            fetch('/tasks/reorder', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    status: status,
+                    taskIds: taskIds
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update local display_order for tasks
+                    taskIds.forEach((taskId, index) => {
+                        const task = tasks.find(t => t.id == taskId);
+                        if (task) {
+                            task.displayOrder = index;
+                        }
+                    });
+                    // Re-render to ensure consistency
+                    renderTasks();
+                } else {
+                    alert('Failed to update task order');
+                    renderTasks(); // Revert to original state
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Failed to update task order');
                 renderTasks(); // Revert to original state
             });
         }
