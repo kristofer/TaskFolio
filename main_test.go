@@ -4329,3 +4329,129 @@ func TestCommentsMigration(t *testing.T) {
 		t.Errorf("Expected comments 'Added after migration', got '%s'", comments)
 	}
 }
+
+// TestTaskReordering tests the display_order field and reordering functionality
+func TestTaskReordering(t *testing.T) {
+testDB := createTestDB(t)
+defer testDB.Close()
+db = testDB
+
+// Create test user
+_, err := db.Exec(`INSERT INTO users (username, password, role) VALUES (?, ?, ?)`,
+"student1", "password", "student")
+if err != nil {
+t.Fatalf("Failed to create test user: %v", err)
+}
+
+// Create multiple tasks with different display orders
+tasks := []struct {
+title        string
+status       string
+displayOrder int
+}{
+{"Task 1", "pending", 0},
+{"Task 2", "pending", 1},
+{"Task 3", "pending", 2},
+{"Task 4", "in_progress", 0},
+{"Task 5", "in_progress", 1},
+}
+
+for _, task := range tasks {
+_, err := db.Exec(`
+INSERT INTO tasks (title, status, owner_id, created_by, display_order)
+VALUES (?, ?, 1, 1, ?)
+`, task.title, task.status, task.displayOrder)
+if err != nil {
+t.Fatalf("Failed to create task %s: %v", task.title, err)
+}
+}
+
+// Verify tasks are ordered correctly
+rows, err := db.Query(`
+SELECT title FROM tasks 
+WHERE owner_id = 1 AND status = 'pending'
+ORDER BY display_order
+`)
+if err != nil {
+t.Fatalf("Failed to query tasks: %v", err)
+}
+defer rows.Close()
+
+expectedOrder := []string{"Task 1", "Task 2", "Task 3"}
+i := 0
+for rows.Next() {
+var title string
+rows.Scan(&title)
+if title != expectedOrder[i] {
+t.Errorf("Expected task %s at position %d, got %s", expectedOrder[i], i, title)
+}
+i++
+}
+
+// Test reordering: swap Task 1 and Task 3
+_, err = db.Exec(`UPDATE tasks SET display_order = 2 WHERE title = 'Task 1'`)
+if err != nil {
+t.Fatalf("Failed to update Task 1: %v", err)
+}
+_, err = db.Exec(`UPDATE tasks SET display_order = 0 WHERE title = 'Task 3'`)
+if err != nil {
+t.Fatalf("Failed to update Task 3: %v", err)
+}
+
+// Verify new order
+rows, err = db.Query(`
+SELECT title FROM tasks 
+WHERE owner_id = 1 AND status = 'pending'
+ORDER BY display_order
+`)
+if err != nil {
+t.Fatalf("Failed to query tasks after reorder: %v", err)
+}
+defer rows.Close()
+
+newExpectedOrder := []string{"Task 3", "Task 2", "Task 1"}
+i = 0
+for rows.Next() {
+var title string
+rows.Scan(&title)
+if title != newExpectedOrder[i] {
+t.Errorf("After reorder: Expected task %s at position %d, got %s", newExpectedOrder[i], i, title)
+}
+i++
+}
+}
+
+// TestDisplayOrderMigration tests that the display_order column migration works correctly
+func TestDisplayOrderMigration(t *testing.T) {
+testDB := createTestDB(t)
+defer testDB.Close()
+db = testDB
+
+// Create a user and some tasks
+_, err := db.Exec(`INSERT INTO users (username, password, role) VALUES (?, ?, ?)`,
+"student1", "password", "student")
+if err != nil {
+t.Fatalf("Failed to create test user: %v", err)
+}
+
+// Create tasks without explicit display_order (should default to 0)
+for i := 1; i <= 3; i++ {
+_, err := db.Exec(`
+INSERT INTO tasks (title, status, owner_id, created_by)
+VALUES (?, 'pending', 1, 1)
+`, fmt.Sprintf("Task %d", i))
+if err != nil {
+t.Fatalf("Failed to create task: %v", err)
+}
+}
+
+// Verify display_order defaults to 0
+var displayOrder int
+err = db.QueryRow(`SELECT display_order FROM tasks WHERE title = 'Task 1'`).Scan(&displayOrder)
+if err != nil {
+t.Fatalf("Failed to query display_order: %v", err)
+}
+if displayOrder != 0 {
+t.Errorf("Expected default display_order to be 0, got %d", displayOrder)
+}
+}
