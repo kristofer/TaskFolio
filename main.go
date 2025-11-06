@@ -48,6 +48,7 @@ type Task struct {
 	DoneDate       *time.Time // Date when task was moved to done
 	GroupID        *int       // ID of the group this task is assigned to (if any)
 	Comments       string     // User's notes and thoughts about the task
+	DisplayOrder   int        // Order of the task within its status column
 }
 
 type Group struct {
@@ -105,6 +106,7 @@ func initDB() error {
 			done_date DATETIME,
 			group_id INTEGER,
 			comments TEXT,
+			display_order INTEGER DEFAULT 0,
 			FOREIGN KEY (owner_id) REFERENCES users(id),
 			FOREIGN KEY (created_by) REFERENCES users(id),
 			FOREIGN KEY (group_id) REFERENCES groups(id)
@@ -282,6 +284,35 @@ func migrateDatabase() error {
 		log.Println("Added comments column to tasks table")
 	}
 
+	// Check and add display_order column to tasks table
+	var displayOrderExists int
+	err = db.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='display_order'
+	`).Scan(&displayOrderExists)
+	if err == nil && displayOrderExists == 0 {
+		_, err = db.Exec(`ALTER TABLE tasks ADD COLUMN display_order INTEGER DEFAULT 0`)
+		if err != nil {
+			return fmt.Errorf("failed to add display_order column: %v", err)
+		}
+		log.Println("Added display_order column to tasks table")
+		
+		// Initialize display_order for existing tasks based on created_at
+		// Order within each status/owner_id combination
+		_, err = db.Exec(`
+			UPDATE tasks SET display_order = (
+				SELECT COUNT(*) FROM tasks t2 
+				WHERE t2.owner_id = tasks.owner_id 
+				AND t2.status = tasks.status 
+				AND t2.created_at <= tasks.created_at
+			)
+		`)
+		if err != nil {
+			log.Printf("Warning: failed to initialize display_order values: %v", err)
+		} else {
+			log.Println("Initialized display_order values for existing tasks")
+		}
+	}
+
 	// Migrate task_type CHECK constraint to new values
 	// We need to check if the old constraint exists and recreate the table if needed
 	if err := migrateTaskTypeConstraint(); err != nil {
@@ -351,6 +382,7 @@ func migrateTaskTypeConstraint() error {
 			done_date DATETIME,
 			group_id INTEGER,
 			comments TEXT,
+			display_order INTEGER DEFAULT 0,
 			FOREIGN KEY (owner_id) REFERENCES users(id),
 			FOREIGN KEY (created_by) REFERENCES users(id),
 			FOREIGN KEY (group_id) REFERENCES groups(id)
@@ -366,9 +398,10 @@ func migrateTaskTypeConstraint() error {
 	// Mapping: 'coding' -> 'individual-programming-lab', 'submission' -> '', 'document-creation' -> 'document'
 	
 	// Check which columns exist in the old table
-	var groupIDExists, commentsExists int
+	var groupIDExists, commentsExists, displayOrderExists int
 	tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='group_id'`).Scan(&groupIDExists)
 	tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='comments'`).Scan(&commentsExists)
+	tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='display_order'`).Scan(&displayOrderExists)
 	
 	// Build SELECT statement based on existing columns
 	groupIDSelect := "NULL"
@@ -379,9 +412,13 @@ func migrateTaskTypeConstraint() error {
 	if commentsExists > 0 {
 		commentsSelect = "COALESCE(comments, '')"
 	}
+	displayOrderSelect := "0"
+	if displayOrderExists > 0 {
+		displayOrderSelect = "COALESCE(display_order, 0)"
+	}
 	
 	insertSQL := fmt.Sprintf(`
-		INSERT INTO tasks_new (id, title, description, due_date, status, owner_id, created_by, assigned_to, created_at, task_type, resource_url, cohort_id, in_progress_date, done_date, group_id, comments)
+		INSERT INTO tasks_new (id, title, description, due_date, status, owner_id, created_by, assigned_to, created_at, task_type, resource_url, cohort_id, in_progress_date, done_date, group_id, comments, display_order)
 		SELECT id, title, description, due_date, status, owner_id, created_by,
 		       COALESCE(assigned_to, ''), created_at,
 		       CASE COALESCE(task_type, '')
@@ -391,9 +428,9 @@ func migrateTaskTypeConstraint() error {
 		           ELSE COALESCE(task_type, '')
 		       END,
 		       COALESCE(resource_url, ''), COALESCE(cohort_id, ''),
-		       in_progress_date, done_date, %s, %s
+		       in_progress_date, done_date, %s, %s, %s
 		FROM tasks
-	`, groupIDSelect, commentsSelect)
+	`, groupIDSelect, commentsSelect, displayOrderSelect)
 	
 	_, err = tx.Exec(insertSQL)
 	if err != nil {
@@ -2076,6 +2113,87 @@ func updateTaskCommentsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(`{"success": true}`))
 }
 
+// reorderTaskHandler handles reordering tasks within a column
+func reorderTaskHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	session, err := getSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse the request body to get the task order
+	var requestData struct {
+		TaskID   int   `json:"taskId"`
+		Status   string `json:"status"`
+		TaskIDs  []int `json:"taskIds"` // New order of task IDs in the column
+	}
+
+	err = json.NewDecoder(r.Body).Decode(&requestData)
+	if err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// Verify all tasks belong to the user
+	for _, taskID := range requestData.TaskIDs {
+		var ownerID int
+		err = db.QueryRow(`
+			SELECT owner_id FROM tasks WHERE id = ? AND status = ?
+		`, taskID, requestData.Status).Scan(&ownerID)
+		
+		if err != nil {
+			http.Error(w, "Task not found", http.StatusNotFound)
+			return
+		}
+		
+		if ownerID != user.ID {
+			http.Error(w, "Unauthorized", http.StatusForbidden)
+			return
+		}
+	}
+
+	// Update display_order for each task
+	tx, err := db.Begin()
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	for i, taskID := range requestData.TaskIDs {
+		_, err = tx.Exec(`
+			UPDATE tasks
+			SET display_order = ?
+			WHERE id = ? AND owner_id = ?
+		`, i, taskID, user.ID)
+		
+		if err != nil {
+			http.Error(w, "Failed to update task order", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		http.Error(w, "Failed to commit changes", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"success": true}`))
+}
+
 // importTasksHandler handles bulk import of tasks from CSV file
 func importTasksHandler(w http.ResponseWriter, r *http.Request) {
 	session, err := getSession(r)
@@ -2509,6 +2627,7 @@ func main() {
 	http.HandleFunc("/tasks/delete", deleteTaskHandler)
 	http.HandleFunc("/tasks/update-status", updateTaskStatusHandler)
 	http.HandleFunc("/tasks/update-comments", updateTaskCommentsHandler)
+	http.HandleFunc("/tasks/reorder", reorderTaskHandler)
 	http.HandleFunc("/tasks/import", importTasksHandler)
 	http.HandleFunc("/students", studentsHandler)
 	http.HandleFunc("/students/add", addStudentHandler)
@@ -3187,20 +3306,20 @@ func getTasks(user User) ([]Task, error) {
 		rows, err = db.Query(`
 			SELECT id, title, description, due_date, status, owner_id, created_by, created_at,
 			       COALESCE(task_type, ''), COALESCE(resource_url, ''), COALESCE(cohort_id, ''),
-			       in_progress_date, done_date, group_id, COALESCE(comments, '')
+			       in_progress_date, done_date, group_id, COALESCE(comments, ''), COALESCE(display_order, 0)
 			FROM tasks
 			WHERE created_by = ? AND owner_id = ?
-			ORDER BY created_at DESC
+			ORDER BY status, display_order, created_at DESC
 		`, user.ID, user.ID)
 	} else {
 		// Students see their own tasks
 		rows, err = db.Query(`
 			SELECT id, title, description, due_date, status, owner_id, created_by, created_at,
 			       COALESCE(task_type, ''), COALESCE(resource_url, ''), COALESCE(cohort_id, ''),
-			       in_progress_date, done_date, group_id, COALESCE(comments, '')
+			       in_progress_date, done_date, group_id, COALESCE(comments, ''), COALESCE(display_order, 0)
 			FROM tasks
 			WHERE owner_id = ?
-			ORDER BY created_at DESC
+			ORDER BY status, display_order, created_at DESC
 		`, user.ID)
 	}
 
@@ -3215,7 +3334,7 @@ func getTasks(user User) ([]Task, error) {
 		var groupID sql.NullInt64
 		err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate,
 			&task.Status, &task.OwnerID, &task.CreatedBy, &task.CreatedAt,
-			&task.TaskType, &task.ResourceURL, &task.CohortID, &inProgressDate, &doneDate, &groupID, &task.Comments)
+			&task.TaskType, &task.ResourceURL, &task.CohortID, &inProgressDate, &doneDate, &groupID, &task.Comments, &task.DisplayOrder)
 		if err != nil {
 			return nil, err
 		}
