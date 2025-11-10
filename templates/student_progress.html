@@ -533,7 +533,7 @@
                         <div class="modal-field-label">Cohort</div>
                         <div class="modal-field-value" id="modalCohort"></div>
                     </div>
-                    <div class="modal-field" id="modalCommentsField" style="display: none;">
+                    <div class="modal-field" id="modalCommentsField">
                         <div class="modal-field-label">Student Comments / Notes</div>
                         <div class="modal-field-value" id="modalComments"></div>
                     </div>
@@ -633,12 +633,12 @@
                 document.getElementById('modalCohortField').style.display = 'none';
             }
 
-            // Comments (read-only for instructors)
+            // Comments (read-only for instructors) - always show
+            document.getElementById('modalCommentsField').style.display = 'block';
             if (task.comments) {
-                document.getElementById('modalCommentsField').style.display = 'block';
                 document.getElementById('modalComments').textContent = task.comments;
             } else {
-                document.getElementById('modalCommentsField').style.display = 'none';
+                document.getElementById('modalComments').textContent = 'No comments yet';
             }
 
             document.getElementById('modalCreatedAt').textContent = task.createdAt;
