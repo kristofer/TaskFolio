@@ -61,6 +61,14 @@ type Group struct {
 	Students    []int // Student IDs in this group
 }
 
+type TaskStats struct {
+	Total       int
+	Pending     int
+	InProgress  int
+	Blocked     int
+	Completed   int
+}
+
 func initDB() error {
 	var err error
 	dbPath := os.Getenv("DATABASE_PATH")
@@ -509,20 +517,36 @@ func studentsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var students []User
+	type StudentWithStats struct {
+		User
+		Stats TaskStats
+	}
+
+	var studentsWithStats []StudentWithStats
 	for rows.Next() {
 		var s User
 		s.Role = "student"
 		rows.Scan(&s.ID, &s.Username, &s.CohortName, &s.IsSuspended)
-		students = append(students, s)
+		
+		// Get task statistics for this student
+		stats, err := getTaskStatsForStudent(s.ID)
+		if err != nil {
+			log.Printf("Error getting task stats for student %d: %v", s.ID, err)
+			stats = TaskStats{} // Use empty stats on error
+		}
+		
+		studentsWithStats = append(studentsWithStats, StudentWithStats{
+			User:  s,
+			Stats: stats,
+		})
 	}
 
 	data := struct {
 		User     User
-		Students []User
+		Students []StudentWithStats
 	}{
 		User:     user,
-		Students: students,
+		Students: studentsWithStats,
 	}
 
 	templates.ExecuteTemplate(w, "students.html", data)
@@ -3329,6 +3353,45 @@ func getGroupNameByID(id int) string {
 		return ""
 	}
 	return name
+}
+
+// getTaskStatsForStudent calculates task statistics for a student
+func getTaskStatsForStudent(studentID int) (TaskStats, error) {
+	stats := TaskStats{}
+	
+	// Get counts for each status
+	rows, err := db.Query(`
+		SELECT status, COUNT(*) as count
+		FROM tasks
+		WHERE owner_id = ?
+		GROUP BY status
+	`, studentID)
+	if err != nil {
+		return stats, err
+	}
+	defer rows.Close()
+	
+	for rows.Next() {
+		var status string
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return stats, err
+		}
+		
+		stats.Total += count
+		switch status {
+		case "pending":
+			stats.Pending = count
+		case "in_progress":
+			stats.InProgress = count
+		case "blocked":
+			stats.Blocked = count
+		case "completed":
+			stats.Completed = count
+		}
+	}
+	
+	return stats, nil
 }
 
 func getTasks(user User) ([]Task, error) {
