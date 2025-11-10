@@ -474,7 +474,7 @@ func TestTaskTypes(t *testing.T) {
 	}
 
 	// Test different task types
-	taskTypes := []string{"group-programming-project", "individual-programming-lab", "reading", "document", "resume", "prodev", "demo-presentation"}
+	taskTypes := []string{"group-programming-project", "individual-programming-lab", "reading", "document", "resume", "prodev", "demo-presentation", "research-analysis-design", "organize"}
 
 	for i, taskType := range taskTypes {
 		_, err := testDB.Exec("INSERT INTO tasks (title, task_type, owner_id, created_by) VALUES (?, ?, ?, ?)",
@@ -1633,6 +1633,8 @@ FOREIGN KEY (created_by) REFERENCES users(id)
 		"resume",
 		"prodev",
 		"demo-presentation",
+		"research-analysis-design",
+		"organize",
 	}
 
 	for _, taskType := range newTaskTypes {
@@ -2184,7 +2186,7 @@ owner_id INTEGER NOT NULL,
 created_by INTEGER NOT NULL,
 assigned_to TEXT,
 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-task_type TEXT CHECK(task_type IN ('group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev', 'demo-presentation', '')),
+task_type TEXT CHECK(task_type IN ('group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev', 'demo-presentation', 'research-analysis-design', 'organize', '')),
 resource_url TEXT,
 cohort_id TEXT,
 in_progress_date DATETIME,
@@ -4253,7 +4255,7 @@ func TestCommentsMigration(t *testing.T) {
 			created_by INTEGER NOT NULL,
 			assigned_to TEXT,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			task_type TEXT CHECK(task_type IN ('group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev', 'demo-presentation', '')),
+			task_type TEXT CHECK(task_type IN ('group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev', 'demo-presentation', 'research-analysis-design', 'organize', '')),
 			resource_url TEXT,
 			cohort_id TEXT,
 			in_progress_date DATETIME,
@@ -4454,4 +4456,122 @@ t.Fatalf("Failed to query display_order: %v", err)
 if displayOrder != 0 {
 t.Errorf("Expected default display_order to be 0, got %d", displayOrder)
 }
+}
+
+// TestNewTaskTypesMigration tests the specific case where a database has demo-presentation
+// but is missing 'research-analysis-design' and 'organize' from the CHECK constraint
+func TestNewTaskTypesMigration(t *testing.T) {
+	// Create a database with the constraint that has demo-presentation but is missing newer types
+	testDB, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open test database: %v", err)
+	}
+	defer testDB.Close()
+
+	// Create users table
+	_, err = testDB.Exec(`
+		CREATE TABLE users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE NOT NULL,
+			password TEXT NOT NULL,
+			role TEXT NOT NULL
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create users table: %v", err)
+	}
+
+	// Create tasks table WITHOUT research-analysis-design and organize (simulating a database from before they were added)
+	_, err = testDB.Exec(`
+		CREATE TABLE tasks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			description TEXT,
+			due_date TEXT,
+			status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'in_progress', 'completed', 'blocked')),
+			owner_id INTEGER NOT NULL,
+			created_by INTEGER NOT NULL,
+			assigned_to TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			task_type TEXT CHECK(task_type IN ('group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev', 'demo-presentation', '')),
+			resource_url TEXT,
+			cohort_id TEXT,
+			in_progress_date DATETIME,
+			done_date DATETIME,
+			FOREIGN KEY (owner_id) REFERENCES users(id),
+			FOREIGN KEY (created_by) REFERENCES users(id)
+		)
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create tasks table: %v", err)
+	}
+
+	// Insert test user and task with existing task type
+	_, err = testDB.Exec(`INSERT INTO users (id, username, password, role) VALUES (1, 'testuser', 'pass', 'student')`)
+	if err != nil {
+		t.Fatalf("Failed to insert test user: %v", err)
+	}
+
+	_, err = testDB.Exec(`INSERT INTO tasks (title, owner_id, created_by, task_type) VALUES ('Existing Task', 1, 1, 'demo-presentation')`)
+	if err != nil {
+		t.Fatalf("Failed to insert test task: %v", err)
+	}
+
+	// Verify that research-analysis-design is rejected before migration
+	_, err = testDB.Exec(`INSERT INTO tasks (title, owner_id, created_by, task_type) VALUES ('Research Task', 1, 1, 'research-analysis-design')`)
+	if err == nil {
+		t.Fatal("Expected research-analysis-design to be rejected before migration, but it was accepted")
+	}
+
+	// Verify that organize is rejected before migration
+	_, err = testDB.Exec(`INSERT INTO tasks (title, owner_id, created_by, task_type) VALUES ('Organize Task', 1, 1, 'organize')`)
+	if err == nil {
+		t.Fatal("Expected organize to be rejected before migration, but it was accepted")
+	}
+
+	// Run the migration
+	db = testDB
+	if err := migrateTaskTypeConstraint(); err != nil {
+		t.Fatalf("Migration failed: %v", err)
+	}
+
+	// Verify old data is preserved
+	var count int
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE title = 'Existing Task'").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query existing task: %v", err)
+	}
+	if count != 1 {
+		t.Fatal("Existing task data was lost during migration!")
+	}
+
+	// Test that we can now insert research-analysis-design
+	_, err = testDB.Exec(`INSERT INTO tasks (title, owner_id, created_by, task_type) VALUES ('Research Task', 1, 1, 'research-analysis-design')`)
+	if err != nil {
+		t.Fatalf("Failed to insert research-analysis-design after migration: %v", err)
+	}
+
+	// Verify research-analysis-design task was created
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE task_type = 'research-analysis-design'").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query research-analysis-design task: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Expected 1 research-analysis-design task after migration, got %d", count)
+	}
+
+	// Test that we can now insert organize
+	_, err = testDB.Exec(`INSERT INTO tasks (title, owner_id, created_by, task_type) VALUES ('Organize Task', 1, 1, 'organize')`)
+	if err != nil {
+		t.Fatalf("Failed to insert organize after migration: %v", err)
+	}
+
+	// Verify organize task was created
+	err = testDB.QueryRow("SELECT COUNT(*) FROM tasks WHERE task_type = 'organize'").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query organize task: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Expected 1 organize task after migration, got %d", count)
+	}
 }

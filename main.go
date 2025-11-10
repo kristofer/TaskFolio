@@ -99,7 +99,7 @@ func initDB() error {
 			created_by INTEGER NOT NULL,
 			assigned_to TEXT,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			task_type TEXT CHECK(task_type IN ('group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev', 'demo-presentation', '')),
+			task_type TEXT CHECK(task_type IN ('group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev', 'demo-presentation', 'research-analysis-design', 'organize', '')),
 			resource_url TEXT,
 			cohort_id TEXT,
 			in_progress_date DATETIME,
@@ -375,7 +375,7 @@ func migrateTaskTypeConstraint() error {
 			created_by INTEGER NOT NULL,
 			assigned_to TEXT,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			task_type TEXT CHECK(task_type IN ('group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev', 'demo-presentation', '')),
+			task_type TEXT CHECK(task_type IN ('group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev', 'demo-presentation', 'research-analysis-design', 'organize', '')),
 			resource_url TEXT,
 			cohort_id TEXT,
 			in_progress_date DATETIME,
@@ -459,7 +459,7 @@ func migrateTaskTypeConstraint() error {
 }
 
 // containsOldTaskTypes checks if the table schema contains old task type values
-// or is missing new task types like 'demo-presentation'
+// or is missing new task types like 'demo-presentation', 'research-analysis-design', or 'organize'
 func containsOldTaskTypes(sql string) bool {
 	oldTypes := []string{"'coding'", "'submission'", "'document-creation'"}
 	for _, oldType := range oldTypes {
@@ -467,11 +467,13 @@ func containsOldTaskTypes(sql string) bool {
 			return true
 		}
 	}
-	// Also check if the schema is missing 'demo-presentation'
-	// This handles cases where the database was created after old types were removed
-	// but before 'demo-presentation' was added
-	if strings.Contains(sql, "task_type") && !strings.Contains(sql, "'demo-presentation'") {
-		return true
+	// Also check if the schema is missing any of the newer task types
+	// This handles cases where the database was created before these types were added
+	newTypes := []string{"'demo-presentation'", "'research-analysis-design'", "'organize'"}
+	for _, newType := range newTypes {
+		if strings.Contains(sql, "task_type") && !strings.Contains(sql, newType) {
+			return true
+		}
 	}
 	return false
 }
