@@ -1315,11 +1315,12 @@ func studentProgressHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Get all tasks for this student
 	rows, err := db.Query(`
-		SELECT id, title, description, due_date, status, created_at,
-		       COALESCE(task_type, ''), COALESCE(resource_url, '')
+		SELECT id, title, description, due_date, status, owner_id, created_by, created_at,
+		       COALESCE(task_type, ''), COALESCE(resource_url, ''), COALESCE(cohort_id, ''),
+		       in_progress_date, done_date, group_id, COALESCE(comments, ''), COALESCE(display_order, 0)
 		FROM tasks
 		WHERE owner_id = ?
-		ORDER BY created_at DESC
+		ORDER BY status, display_order, created_at DESC
 	`, studentID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1335,8 +1336,25 @@ func studentProgressHandler(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var task Task
-		rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate,
-			&task.Status, &task.CreatedAt, &task.TaskType, &task.ResourceURL)
+		var inProgressDate, doneDate sql.NullTime
+		var groupID sql.NullInt64
+		err := rows.Scan(&task.ID, &task.Title, &task.Description, &task.DueDate,
+			&task.Status, &task.OwnerID, &task.CreatedBy, &task.CreatedAt,
+			&task.TaskType, &task.ResourceURL, &task.CohortID, &inProgressDate, &doneDate, &groupID, &task.Comments, &task.DisplayOrder)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if inProgressDate.Valid {
+			task.InProgressDate = &inProgressDate.Time
+		}
+		if doneDate.Valid {
+			task.DoneDate = &doneDate.Time
+		}
+		if groupID.Valid {
+			gid := int(groupID.Int64)
+			task.GroupID = &gid
+		}
 		tasks = append(tasks, task)
 		totalTasks++
 
@@ -1355,10 +1373,25 @@ func studentProgressHandler(w http.ResponseWriter, r *http.Request) {
 		completionPercentage = float64(completedTasks) / float64(totalTasks) * 100
 	}
 
+	// Create a struct to hold task with group name for the template
+	type TaskWithGroup struct {
+		Task
+		GroupName string
+	}
+
+	var tasksWithGroups []TaskWithGroup
+	for _, task := range tasks {
+		twg := TaskWithGroup{Task: task}
+		if task.GroupID != nil {
+			twg.GroupName = getGroupNameByID(*task.GroupID)
+		}
+		tasksWithGroups = append(tasksWithGroups, twg)
+	}
+
 	data := struct {
 		User                 User
 		Student              User
-		Tasks                []Task
+		Tasks                []TaskWithGroup
 		TotalTasks           int
 		CompletedTasks       int
 		InProgressTasks      int
@@ -1367,7 +1400,7 @@ func studentProgressHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		User:                 user,
 		Student:              student,
-		Tasks:                tasks,
+		Tasks:                tasksWithGroups,
 		TotalTasks:           totalTasks,
 		CompletedTasks:       completedTasks,
 		InProgressTasks:      inProgressTasks,
