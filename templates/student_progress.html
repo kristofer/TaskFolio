@@ -229,6 +229,7 @@
             transition: transform 0.2s, box-shadow 0.2s;
             flex-shrink: 0;
             min-height: 120px;
+            cursor: pointer;
         }
         .task-card-kanban:hover {
             transform: translateY(-2px);
@@ -304,6 +305,93 @@
             font-size: 14px;
             text-align: center;
             font-weight: 500;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            width: 90%;
+            max-width: 600px;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        .modal-header {
+            background: linear-gradient(135deg, #2C5F7C 0%, #5FA896 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px 10px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-title {
+            margin: 0;
+            font-size: 20px;
+            color: white;
+        }
+        .close-btn {
+            background: white;
+            color: #2C5F7C;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: opacity 0.3s;
+        }
+        .close-btn:hover {
+            opacity: 0.9;
+        }
+        .modal-body {
+            padding: 20px;
+        }
+        .modal-field {
+            margin-bottom: 15px;
+        }
+        .modal-field-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        .modal-field-value {
+            font-size: 14px;
+            color: #333;
+            white-space: pre-wrap;
+        }
+        .modal-field-value a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        .modal-field-value a:hover {
+            text-decoration: underline;
         }
     </style>
 </head>
@@ -408,6 +496,54 @@
             <p>This student has no tasks assigned yet.</p>
         </div>
         {{end}}
+
+        <!-- Read-Only Task Details Modal -->
+        <div id="taskModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title" id="modalTitle"></h2>
+                    <button class="close-btn" onclick="closeModal()">Close</button>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-field">
+                        <div class="modal-field-label">Description</div>
+                        <div class="modal-field-value" id="modalDescription"></div>
+                    </div>
+                    <div class="modal-field">
+                        <div class="modal-field-label">Status</div>
+                        <div class="modal-field-value" id="modalStatus"></div>
+                    </div>
+                    <div class="modal-field" id="modalDueDateField" style="display: none;">
+                        <div class="modal-field-label">Due Date</div>
+                        <div class="modal-field-value" id="modalDueDate"></div>
+                    </div>
+                    <div class="modal-field" id="modalTaskTypeField" style="display: none;">
+                        <div class="modal-field-label">Task Type</div>
+                        <div class="modal-field-value" id="modalTaskType"></div>
+                    </div>
+                    <div class="modal-field" id="modalResourceURLField" style="display: none;">
+                        <div class="modal-field-label">Resource URL</div>
+                        <div class="modal-field-value" id="modalResourceURL"></div>
+                    </div>
+                    <div class="modal-field" id="modalGroupField" style="display: none;">
+                        <div class="modal-field-label">Group</div>
+                        <div class="modal-field-value" id="modalGroup"></div>
+                    </div>
+                    <div class="modal-field" id="modalCohortField" style="display: none;">
+                        <div class="modal-field-label">Cohort</div>
+                        <div class="modal-field-value" id="modalCohort"></div>
+                    </div>
+                    <div class="modal-field" id="modalCommentsField">
+                        <div class="modal-field-label">Student Comments / Notes</div>
+                        <div class="modal-field-value" id="modalComments"></div>
+                    </div>
+                    <div class="modal-field">
+                        <div class="modal-field-label">Created Date</div>
+                        <div class="modal-field-value" id="modalCreatedAt"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -422,7 +558,10 @@
                 status: "{{.Status}}",
                 taskType: "{{.TaskType}}",
                 resourceURL: "{{.ResourceURL}}",
-                createdAt: "{{.CreatedAt.Format "Jan 2, 2006"}}"
+                createdAt: "{{.CreatedAt.Format "Jan 2, 2006"}}",
+                comments: "{{.Comments}}",
+                groupName: "{{.GroupName}}",
+                cohortID: "{{.CohortID}}"
             },
             {{end}}
         ];
@@ -438,6 +577,85 @@
                 return 'https://' + url;
             }
             return url;
+        }
+
+        // Show task details in read-only modal
+        function showTaskDetails(taskId) {
+            const task = tasks.find(t => t.id == taskId);
+            if (!task) return;
+
+            document.getElementById('modalTitle').textContent = task.title;
+            document.getElementById('modalDescription').textContent = task.description || 'No description';
+            document.getElementById('modalStatus').textContent = task.status.toUpperCase().replace('_', ' ');
+            
+            // Due Date
+            if (task.dueDate) {
+                document.getElementById('modalDueDateField').style.display = 'block';
+                document.getElementById('modalDueDate').textContent = task.dueDate;
+            } else {
+                document.getElementById('modalDueDateField').style.display = 'none';
+            }
+
+            // Task Type
+            if (task.taskType) {
+                document.getElementById('modalTaskTypeField').style.display = 'block';
+                document.getElementById('modalTaskType').textContent = task.taskType;
+            } else {
+                document.getElementById('modalTaskTypeField').style.display = 'none';
+            }
+
+            // Resource URL
+            if (task.resourceURL) {
+                document.getElementById('modalResourceURLField').style.display = 'block';
+                const urlLink = document.createElement('a');
+                urlLink.href = normalizeURL(task.resourceURL);
+                urlLink.target = '_blank';
+                urlLink.textContent = task.resourceURL;
+                document.getElementById('modalResourceURL').innerHTML = '';
+                document.getElementById('modalResourceURL').appendChild(urlLink);
+            } else {
+                document.getElementById('modalResourceURLField').style.display = 'none';
+            }
+
+            // Group
+            if (task.groupName) {
+                document.getElementById('modalGroupField').style.display = 'block';
+                document.getElementById('modalGroup').textContent = task.groupName;
+            } else {
+                document.getElementById('modalGroupField').style.display = 'none';
+            }
+
+            // Cohort
+            if (task.cohortID) {
+                document.getElementById('modalCohortField').style.display = 'block';
+                document.getElementById('modalCohort').textContent = task.cohortID;
+            } else {
+                document.getElementById('modalCohortField').style.display = 'none';
+            }
+
+            // Comments (read-only for instructors) - always show
+            document.getElementById('modalCommentsField').style.display = 'block';
+            if (task.comments) {
+                document.getElementById('modalComments').textContent = task.comments;
+            } else {
+                document.getElementById('modalComments').textContent = 'No comments yet';
+            }
+
+            document.getElementById('modalCreatedAt').textContent = task.createdAt;
+
+            document.getElementById('taskModal').style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('taskModal').style.display = 'none';
+        }
+
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('taskModal');
+            if (event.target == modal) {
+                closeModal();
+            }
         }
 
         // Render tasks to kanban board (read-only, no drag-and-drop)
@@ -528,6 +746,11 @@
                 badge.textContent = task.taskType;
                 card.appendChild(badge);
             }
+
+            // Double-click to show task details (read-only)
+            card.addEventListener('dblclick', () => {
+                showTaskDetails(task.id);
+            });
 
             return card;
         }
