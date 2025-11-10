@@ -4575,3 +4575,107 @@ func TestNewTaskTypesMigration(t *testing.T) {
 		t.Errorf("Expected 1 organize task after migration, got %d", count)
 	}
 }
+
+// TestGetTaskStatsForStudent tests the getTaskStatsForStudent function
+func TestGetTaskStatsForStudent(t *testing.T) {
+	testDB := createTestDB(t)
+	defer testDB.Close()
+
+	// Set global db to test database
+	oldDB := db
+	db = testDB
+	defer func() { db = oldDB }()
+
+	// Create a student
+	result, err := testDB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+		"teststudent", "password", "student")
+	if err != nil {
+		t.Fatalf("Failed to create student: %v", err)
+	}
+	studentID, _ := result.LastInsertId()
+
+	// Create an instructor
+	result, err = testDB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+		"testinstructor", "password", "instructor")
+	if err != nil {
+		t.Fatalf("Failed to create instructor: %v", err)
+	}
+	instructorID, _ := result.LastInsertId()
+
+	// Create tasks with different statuses
+	tasks := []struct {
+		title  string
+		status string
+	}{
+		{"Task 1", "pending"},
+		{"Task 2", "pending"},
+		{"Task 3", "in_progress"},
+		{"Task 4", "blocked"},
+		{"Task 5", "completed"},
+		{"Task 6", "completed"},
+		{"Task 7", "completed"},
+	}
+
+	for _, task := range tasks {
+		_, err := testDB.Exec(`
+			INSERT INTO tasks (title, description, status, owner_id, created_by)
+			VALUES (?, ?, ?, ?, ?)
+		`, task.title, "Test task", task.status, studentID, instructorID)
+		if err != nil {
+			t.Fatalf("Failed to create task %s: %v", task.title, err)
+		}
+	}
+
+	// Test getTaskStatsForStudent
+	stats, err := getTaskStatsForStudent(int(studentID))
+	if err != nil {
+		t.Fatalf("Failed to get task stats: %v", err)
+	}
+
+	// Verify the statistics
+	if stats.Total != 7 {
+		t.Errorf("Expected Total to be 7, got %d", stats.Total)
+	}
+	if stats.Pending != 2 {
+		t.Errorf("Expected Pending to be 2, got %d", stats.Pending)
+	}
+	if stats.InProgress != 1 {
+		t.Errorf("Expected InProgress to be 1, got %d", stats.InProgress)
+	}
+	if stats.Blocked != 1 {
+		t.Errorf("Expected Blocked to be 1, got %d", stats.Blocked)
+	}
+	if stats.Completed != 3 {
+		t.Errorf("Expected Completed to be 3, got %d", stats.Completed)
+	}
+
+	// Test with student that has no tasks
+	result, err = testDB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+		"emptystudent", "password", "student")
+	if err != nil {
+		t.Fatalf("Failed to create empty student: %v", err)
+	}
+	emptyStudentID, _ := result.LastInsertId()
+
+	emptyStats, err := getTaskStatsForStudent(int(emptyStudentID))
+	if err != nil {
+		t.Fatalf("Failed to get task stats for empty student: %v", err)
+	}
+
+	if emptyStats.Total != 0 {
+		t.Errorf("Expected Total to be 0 for empty student, got %d", emptyStats.Total)
+	}
+	if emptyStats.Pending != 0 {
+		t.Errorf("Expected Pending to be 0 for empty student, got %d", emptyStats.Pending)
+	}
+	if emptyStats.InProgress != 0 {
+		t.Errorf("Expected InProgress to be 0 for empty student, got %d", emptyStats.InProgress)
+	}
+	if emptyStats.Blocked != 0 {
+		t.Errorf("Expected Blocked to be 0 for empty student, got %d", emptyStats.Blocked)
+	}
+	if emptyStats.Completed != 0 {
+		t.Errorf("Expected Completed to be 0 for empty student, got %d", emptyStats.Completed)
+	}
+}
+

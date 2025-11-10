@@ -112,6 +112,39 @@
             font-size: 12px;
             font-weight: 500;
         }
+        .progress-cell {
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .progress-badge {
+            display: inline-block;
+            padding: 3px 6px;
+            border-radius: 4px;
+            margin: 1px;
+            min-width: 20px;
+            text-align: center;
+        }
+        .badge-total {
+            background: #3b82f6;
+            color: white;
+        }
+        .badge-pending {
+            background: #10b981;
+            color: white;
+        }
+        .badge-blocked {
+            background: #ef4444;
+            color: white;
+        }
+        .badge-inprogress {
+            background: #f59e0b;
+            color: white;
+        }
+        .badge-completed {
+            background: #3b82f6;
+            color: white;
+        }
         .empty-state {
             text-align: center;
             padding: 60px 20px;
@@ -219,8 +252,9 @@
                 <thead>
                     <tr>
                         <th class="sortable" onclick="sortTable(0)">Username</th>
-                        <th class="sortable" onclick="sortTable(1)">Cohort</th>
-                        <th class="sortable" onclick="sortTable(2)">Status</th>
+                        <th class="sortable" onclick="sortTable(1)">Progress</th>
+                        <th class="sortable" onclick="sortTable(2)">Cohort</th>
+                        <th class="sortable" onclick="sortTable(3)">Status</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -228,6 +262,13 @@
                     {{range .Students}}
                     <tr class="student-row" data-username="{{.Username}}" data-cohort="{{.CohortName}}" data-student-id="{{.ID}}">
                         <td>{{.Username}}</td>
+                        <td class="progress-cell">
+                            <span class="progress-badge badge-total" title="Total tasks">{{.Stats.Total}}</span>
+                            <span class="progress-badge badge-pending" title="Pending tasks">{{.Stats.Pending}}</span>
+                            <span class="progress-badge badge-blocked" title="Blocked tasks">{{.Stats.Blocked}}</span>
+                            <span class="progress-badge badge-inprogress" title="In progress tasks">{{.Stats.InProgress}}</span>
+                            <span class="progress-badge badge-completed" title="Completed tasks">{{.Stats.Completed}}</span>
+                        </td>
                         <td>
                             {{if .CohortName}}
                             <span class="cohort-badge">{{.CohortName}}</span>
@@ -260,7 +301,7 @@
     </div>
     
     <script>
-        let sortDirection = [0, 0, 0]; // 0: no sort, 1: ascending, -1: descending
+        let sortDirection = [0, 0, 0, 0]; // 0: no sort, 1: ascending, -1: descending
         let totalStudentCount = 0;
         let currentFilteredStudents = [];
         
