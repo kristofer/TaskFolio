@@ -1584,9 +1584,23 @@ func exportGroupTaskHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set headers for CSV download
-	filename := "task_export_" + strings.ReplaceAll(taskTitle, " ", "_") + ".csv"
+	// Sanitize filename by removing potentially dangerous characters and limiting to alphanumeric, spaces, dashes, and underscores
+	safeTitle := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == ' ' || r == '-' || r == '_' {
+			return r
+		}
+		return '_'
+	}, taskTitle)
+	safeTitle = strings.ReplaceAll(safeTitle, " ", "_")
+	// Limit filename length to prevent issues
+	if len(safeTitle) > 50 {
+		safeTitle = safeTitle[:50]
+	}
+	filename := "task_export_" + safeTitle + ".csv"
+	
 	w.Header().Set("Content-Type", "text/csv")
-	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
+	// Properly escape the filename for RFC 6266 compliance
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+url.PathEscape(filename)+"\"")
 
 	// Write CSV data in the import format: Task Title, Description, DueDate, TaskType, ResourceURL
 	csvWriter := csv.NewWriter(w)
