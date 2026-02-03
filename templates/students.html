@@ -141,6 +141,18 @@
             gap: 10px;
             align-items: center;
         }
+        .search-box {
+            padding: 6px 12px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+            font-size: 14px;
+            width: 200px;
+        }
+        .search-box:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+        }
         
         table {
             width: 100%;
@@ -295,10 +307,12 @@
                 <div class="tab-header">
                     <h3>Current Students</h3>
                     <div class="tab-controls">
+                        <input type="text" id="studentSearchBox" class="search-box" placeholder="Search students..." oninput="filterStudents()">
                         <div class="select-all-wrapper">
                             <input type="checkbox" id="selectAllCurrent" onchange="toggleSelectAll('current')">
                             <label for="selectAllCurrent" style="cursor: pointer; margin: 0;">Select All</label>
                         </div>
+                        <button id="addTaskToFilteredBtn" class="btn btn-success btn-small" onclick="addTaskToFiltered()" disabled aria-label="Add task to selected students">Add Task to Selected</button>
                         <button id="moveToPastBtn" class="btn btn-danger btn-small" onclick="moveStudents('current', 'move_to_past')" disabled aria-label="Move selected current students to past students">Move to Past</button>
                     </div>
                 </div>
@@ -317,7 +331,7 @@
                         </thead>
                         <tbody id="currentStudentsBody">
                             {{range .CurrentStudents}}
-                            <tr class="student-row">
+                            <tr class="student-row" data-username="{{.Username}}" data-cohort="{{.CohortName}}" data-student-id="{{.ID}}">
                                 <td>
                                     <input type="checkbox" class="student-checkbox-current" value="{{.ID}}" onchange="updateMoveButton('current')">
                                 </td>
@@ -467,8 +481,49 @@
         
         function updateMoveButton(pane) {
             const checkboxes = document.querySelectorAll('.student-checkbox-' + pane + ':checked');
-            const button = document.getElementById(pane === 'current' ? 'moveToPastBtn' : 'moveToCurrentBtn');
-            button.disabled = checkboxes.length === 0;
+            const moveButton = document.getElementById(pane === 'current' ? 'moveToPastBtn' : 'moveToCurrentBtn');
+            moveButton.disabled = checkboxes.length === 0;
+            
+            // Also update the "Add Task to Selected" button for current students
+            if (pane === 'current') {
+                const addTaskButton = document.getElementById('addTaskToFilteredBtn');
+                if (addTaskButton) {
+                    addTaskButton.disabled = checkboxes.length === 0;
+                }
+            }
+        }
+        
+        function filterStudents() {
+            const searchBox = document.getElementById('studentSearchBox');
+            const searchTerm = searchBox.value.toLowerCase();
+            const rows = document.querySelectorAll('#currentStudentsBody .student-row');
+            
+            rows.forEach(row => {
+                const username = row.getAttribute('data-username').toLowerCase();
+                const cohort = row.getAttribute('data-cohort').toLowerCase();
+                
+                // Show row if username or cohort matches the search term
+                if (username.includes(searchTerm) || cohort.includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+        
+        function addTaskToFiltered() {
+            const checkboxes = document.querySelectorAll('.student-checkbox-current:checked');
+            
+            if (checkboxes.length === 0) {
+                alert('Please select at least one student');
+                return;
+            }
+            
+            // Get the IDs of selected students
+            const studentIds = Array.from(checkboxes).map(cb => cb.value);
+            
+            // Redirect to add task page with selected student IDs
+            window.location.href = '/tasks/add?filtered_students=' + studentIds.join(',');
         }
         
         function moveStudents(pane, action) {
