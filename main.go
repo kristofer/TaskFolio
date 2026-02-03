@@ -29,6 +29,7 @@ type User struct {
 	Role        string // "student" or "instructor"
 	CohortName  string // e.g., "Java11.2", "Data6.2"
 	IsSuspended bool   // For account suspension
+	IsCurrent   bool   // Whether student is in current cohort (true) or past (false)
 }
 
 type Task struct {
@@ -88,7 +89,8 @@ func initDB() error {
 			password TEXT NOT NULL,
 			role TEXT NOT NULL CHECK(role IN ('student', 'instructor')),
 			cohort_name TEXT,
-			is_suspended BOOLEAN DEFAULT 0
+			is_suspended BOOLEAN DEFAULT 0,
+			is_current BOOLEAN DEFAULT 1
 		)
 	`)
 	if err != nil {
@@ -160,11 +162,11 @@ func initDB() error {
 
 	// Insert demo users if not exists
 	_, err = db.Exec(`
-		INSERT OR IGNORE INTO users (id, username, password, role, cohort_name, is_suspended) VALUES
-		(1, 'instructor1', 'password123', 'instructor', NULL, 0),
-		(2, 'student1', 'password123', 'student', 'Java11.2', 0),
-		(3, 'student2', 'password123', 'student', 'Java11.2', 0),
-		(4, 'student3', 'password123', 'student', 'Data6.2', 0)
+		INSERT OR IGNORE INTO users (id, username, password, role, cohort_name, is_suspended, is_current) VALUES
+		(1, 'instructor1', 'password123', 'instructor', NULL, 0, 1),
+		(2, 'student1', 'password123', 'student', 'Java11.2', 0, 1),
+		(3, 'student2', 'password123', 'student', 'Java11.2', 0, 1),
+		(4, 'student3', 'password123', 'student', 'Data6.2', 0, 1)
 	`)
 	if err != nil {
 		return err
@@ -199,6 +201,27 @@ func migrateDatabase() error {
 			return fmt.Errorf("failed to add is_suspended column: %v", err)
 		}
 		log.Println("Added is_suspended column to users table")
+	}
+
+	// Check and add is_current column to users table
+	var isCurrentExists int
+	err = db.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('users') WHERE name='is_current'
+	`).Scan(&isCurrentExists)
+	if err == nil && isCurrentExists == 0 {
+		_, err = db.Exec(`ALTER TABLE users ADD COLUMN is_current BOOLEAN DEFAULT 1`)
+		if err != nil {
+			return fmt.Errorf("failed to add is_current column: %v", err)
+		}
+		log.Println("Added is_current column to users table")
+		
+		// Set existing students to is_current = 1 (true)
+		_, err = db.Exec(`UPDATE users SET is_current = 1 WHERE role = 'student' AND is_current IS NULL`)
+		if err != nil {
+			log.Printf("Warning: failed to initialize is_current values: %v", err)
+		} else {
+			log.Println("Initialized is_current to true for existing students")
+		}
 	}
 
 	// Check and add task_type column to tasks table
@@ -508,7 +531,7 @@ func studentsHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Get all students
 	rows, err := db.Query(`
-		SELECT id, username, COALESCE(cohort_name, ''), COALESCE(is_suspended, 0)
+		SELECT id, username, COALESCE(cohort_name, ''), COALESCE(is_suspended, 0), COALESCE(is_current, 1)
 		FROM users WHERE role = 'student' ORDER BY username
 	`)
 	if err != nil {
@@ -522,11 +545,12 @@ func studentsHandler(w http.ResponseWriter, r *http.Request) {
 		Stats TaskStats
 	}
 
-	var studentsWithStats []StudentWithStats
+	var currentStudents []StudentWithStats
+	var pastStudents []StudentWithStats
 	for rows.Next() {
 		var s User
 		s.Role = "student"
-		rows.Scan(&s.ID, &s.Username, &s.CohortName, &s.IsSuspended)
+		rows.Scan(&s.ID, &s.Username, &s.CohortName, &s.IsSuspended, &s.IsCurrent)
 		
 		// Get task statistics for this student
 		stats, err := getTaskStatsForStudent(s.ID)
@@ -535,18 +559,26 @@ func studentsHandler(w http.ResponseWriter, r *http.Request) {
 			stats = TaskStats{} // Use empty stats on error
 		}
 		
-		studentsWithStats = append(studentsWithStats, StudentWithStats{
+		studentWithStats := StudentWithStats{
 			User:  s,
 			Stats: stats,
-		})
+		}
+		
+		if s.IsCurrent {
+			currentStudents = append(currentStudents, studentWithStats)
+		} else {
+			pastStudents = append(pastStudents, studentWithStats)
+		}
 	}
 
 	data := struct {
-		User     User
-		Students []StudentWithStats
+		User            User
+		CurrentStudents []StudentWithStats
+		PastStudents    []StudentWithStats
 	}{
-		User:     user,
-		Students: studentsWithStats,
+		User:            user,
+		CurrentStudents: currentStudents,
+		PastStudents:    pastStudents,
 	}
 
 	templates.ExecuteTemplate(w, "students.html", data)
@@ -578,9 +610,9 @@ func editStudentHandler(w http.ResponseWriter, r *http.Request) {
 		var student User
 		var cohortName sql.NullString
 		err := db.QueryRow(`
-			SELECT id, username, COALESCE(cohort_name, ''), COALESCE(is_suspended, 0)
+			SELECT id, username, COALESCE(cohort_name, ''), COALESCE(is_suspended, 0), COALESCE(is_current, 1)
 			FROM users WHERE id = ? AND role = 'student'
-		`, studentID).Scan(&student.ID, &student.Username, &cohortName, &student.IsSuspended)
+		`, studentID).Scan(&student.ID, &student.Username, &cohortName, &student.IsSuspended, &student.IsCurrent)
 
 		if err != nil {
 			http.Error(w, "Student not found", http.StatusNotFound)
@@ -604,6 +636,7 @@ func editStudentHandler(w http.ResponseWriter, r *http.Request) {
 
 	cohortName := r.FormValue("cohort_name")
 	isSuspended := r.FormValue("is_suspended") == "on"
+	isCurrent := r.FormValue("is_current") == "on"
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 
@@ -612,15 +645,15 @@ func editStudentHandler(w http.ResponseWriter, r *http.Request) {
 	if password != "" {
 		_, err = db.Exec(`
 			UPDATE users
-			SET username = ?, cohort_name = ?, is_suspended = ?, password = ?
+			SET username = ?, cohort_name = ?, is_suspended = ?, is_current = ?, password = ?
 			WHERE id = ? AND role = 'student'
-		`, username, cohortName, isSuspended, password, studentID)
+		`, username, cohortName, isSuspended, isCurrent, password, studentID)
 	} else {
 		_, err = db.Exec(`
 			UPDATE users
-			SET username = ?, cohort_name = ?, is_suspended = ?
+			SET username = ?, cohort_name = ?, is_suspended = ?, is_current = ?
 			WHERE id = ? AND role = 'student'
-		`, username, cohortName, isSuspended, studentID)
+		`, username, cohortName, isSuspended, isCurrent, studentID)
 	}
 
 	if err != nil {
@@ -681,8 +714,8 @@ func addStudentHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Insert new student
 	_, err = db.Exec(`
-		INSERT INTO users (username, password, role, cohort_name, is_suspended)
-		VALUES (?, ?, 'student', ?, 0)
+		INSERT INTO users (username, password, role, cohort_name, is_suspended, is_current)
+		VALUES (?, ?, 'student', ?, 0, 1)
 	`, username, password, cohortName)
 
 	if err != nil {
@@ -857,6 +890,86 @@ func importStudentsHandler(w http.ResponseWriter, r *http.Request) {
     </div>
 </body>
 </html>`)
+}
+
+// moveStudentsHandler handles moving students between current and past status
+func moveStudentsHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can move students
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get student IDs and action from the form
+	err = r.ParseForm()
+	if err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	studentIDs := r.Form["student_ids"]
+	action := r.FormValue("action") // "move_to_past" or "move_to_current"
+
+	if len(studentIDs) == 0 {
+		http.Redirect(w, r, "/students", http.StatusSeeOther)
+		return
+	}
+
+	// Determine the new is_current value based on action
+	var isCurrent bool
+	if action == "move_to_current" {
+		isCurrent = true
+	} else if action == "move_to_past" {
+		isCurrent = false
+	} else {
+		http.Error(w, "Invalid action", http.StatusBadRequest)
+		return
+	}
+
+	// Update students in a transaction
+	tx, err := db.Begin()
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	for _, studentID := range studentIDs {
+		_, err = tx.Exec(`
+			UPDATE users
+			SET is_current = ?
+			WHERE id = ? AND role = 'student'
+		`, isCurrent, studentID)
+		if err != nil {
+			http.Error(w, "Failed to update student", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		http.Error(w, "Failed to commit changes", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/students", http.StatusSeeOther)
 }
 
 // groupsHandler displays list of all groups for instructors to manage
@@ -2778,6 +2891,7 @@ func main() {
 	http.HandleFunc("/students", studentsHandler)
 	http.HandleFunc("/students/add", addStudentHandler)
 	http.HandleFunc("/students/import", importStudentsHandler)
+	http.HandleFunc("/students/move", moveStudentsHandler)
 	http.HandleFunc("/students/edit", editStudentHandler)
 	http.HandleFunc("/students/progress", studentProgressHandler)
 	http.HandleFunc("/groups", groupsHandler)
