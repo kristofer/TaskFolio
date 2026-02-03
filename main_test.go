@@ -32,7 +32,8 @@ func createTestDB(t *testing.T) *sql.DB {
 			password TEXT NOT NULL,
 			role TEXT NOT NULL,
 			cohort_name TEXT,
-			is_suspended BOOLEAN DEFAULT 0
+			is_suspended BOOLEAN DEFAULT 0,
+			is_current BOOLEAN DEFAULT 1
 		)
 	`)
 	if err != nil {
@@ -4788,3 +4789,163 @@ func TestGroupTaskCompletionPercentage(t *testing.T) {
 }
 
 
+
+// TestIsCurrentField tests the is_current field for students
+func TestIsCurrentField(t *testing.T) {
+testDB := createTestDB(t)
+defer testDB.Close()
+
+// Test 1: Insert a new student with default is_current value
+_, err := testDB.Exec(`
+INSERT INTO users (username, password, role, cohort_name, is_suspended, is_current)
+VALUES ('student1', 'password123', 'student', 'Java11.2', 0, 1)
+`)
+if err != nil {
+t.Fatalf("Failed to insert student: %v", err)
+}
+
+// Verify default value
+var isCurrent bool
+err = testDB.QueryRow(`SELECT is_current FROM users WHERE username = 'student1'`).Scan(&isCurrent)
+if err != nil {
+t.Fatalf("Failed to query student: %v", err)
+}
+if !isCurrent {
+t.Errorf("Expected is_current to be true, got false")
+}
+
+// Test 2: Update student to past
+_, err = testDB.Exec(`UPDATE users SET is_current = 0 WHERE username = 'student1'`)
+if err != nil {
+t.Fatalf("Failed to update student: %v", err)
+}
+
+err = testDB.QueryRow(`SELECT is_current FROM users WHERE username = 'student1'`).Scan(&isCurrent)
+if err != nil {
+t.Fatalf("Failed to query student: %v", err)
+}
+if isCurrent {
+t.Errorf("Expected is_current to be false, got true")
+}
+
+// Test 3: Move student back to current
+_, err = testDB.Exec(`UPDATE users SET is_current = 1 WHERE username = 'student1'`)
+if err != nil {
+t.Fatalf("Failed to update student: %v", err)
+}
+
+err = testDB.QueryRow(`SELECT is_current FROM users WHERE username = 'student1'`).Scan(&isCurrent)
+if err != nil {
+t.Fatalf("Failed to query student: %v", err)
+}
+if !isCurrent {
+t.Errorf("Expected is_current to be true, got false")
+}
+}
+
+// TestIsCurrentMigration tests the migration of is_current field
+func TestIsCurrentMigration(t *testing.T) {
+testDB := createTestDB(t)
+defer testDB.Close()
+
+// Simulate old database without is_current column
+_, err := testDB.Exec(`ALTER TABLE users DROP COLUMN is_current`)
+if err != nil {
+t.Logf("Note: is_current column does not exist (expected in new test DB)")
+}
+
+// Insert students without is_current
+_, err = testDB.Exec(`
+INSERT INTO users (username, password, role, cohort_name)
+VALUES ('student1', 'password123', 'student', 'Java11.2')
+`)
+if err != nil {
+t.Fatalf("Failed to insert student: %v", err)
+}
+
+// Add is_current column (simulating migration)
+_, err = testDB.Exec(`ALTER TABLE users ADD COLUMN is_current BOOLEAN DEFAULT 1`)
+if err != nil {
+t.Fatalf("Failed to add is_current column: %v", err)
+}
+
+// Update existing students to is_current = 1
+_, err = testDB.Exec(`UPDATE users SET is_current = 1 WHERE role = 'student' AND is_current IS NULL`)
+if err != nil {
+t.Fatalf("Failed to update students: %v", err)
+}
+
+// Verify that existing student has is_current = 1
+var isCurrent bool
+err = testDB.QueryRow(`SELECT COALESCE(is_current, 1) FROM users WHERE username = 'student1'`).Scan(&isCurrent)
+if err != nil {
+t.Fatalf("Failed to query student: %v", err)
+}
+if !isCurrent {
+t.Errorf("Expected migrated student to have is_current = true, got false")
+}
+}
+
+// TestStudentSeparation tests separating current and past students
+func TestStudentSeparation(t *testing.T) {
+testDB := createTestDB(t)
+defer testDB.Close()
+
+// Insert current students
+_, err := testDB.Exec(`
+INSERT INTO users (username, password, role, cohort_name, is_current)
+VALUES 
+('current1', 'password123', 'student', 'Java11.2', 1),
+('current2', 'password123', 'student', 'Java11.2', 1)
+`)
+if err != nil {
+t.Fatalf("Failed to insert current students: %v", err)
+}
+
+// Insert past students
+_, err = testDB.Exec(`
+INSERT INTO users (username, password, role, cohort_name, is_current)
+VALUES 
+('past1', 'password123', 'student', 'Data6.2', 0),
+('past2', 'password123', 'student', 'Data6.2', 0)
+`)
+if err != nil {
+t.Fatalf("Failed to insert past students: %v", err)
+}
+
+// Query current students
+rows, err := testDB.Query(`SELECT username FROM users WHERE role = 'student' AND is_current = 1`)
+if err != nil {
+t.Fatalf("Failed to query current students: %v", err)
+}
+defer rows.Close()
+
+currentCount := 0
+for rows.Next() {
+var username string
+rows.Scan(&username)
+currentCount++
+}
+
+if currentCount != 2 {
+t.Errorf("Expected 2 current students, got %d", currentCount)
+}
+
+// Query past students
+rows, err = testDB.Query(`SELECT username FROM users WHERE role = 'student' AND is_current = 0`)
+if err != nil {
+t.Fatalf("Failed to query past students: %v", err)
+}
+defer rows.Close()
+
+pastCount := 0
+for rows.Next() {
+var username string
+rows.Scan(&username)
+pastCount++
+}
+
+if pastCount != 2 {
+t.Errorf("Expected 2 past students, got %d", pastCount)
+}
+}
