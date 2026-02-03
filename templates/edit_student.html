@@ -159,6 +159,13 @@
                     </div>
                 </div>
                 
+                <div class="form-group">
+                    <div class="checkbox-wrapper">
+                        <input type="checkbox" id="is_current" name="is_current" {{if .Student.IsCurrent}}checked{{end}}>
+                        <label for="is_current">Current Student</label>
+                    </div>
+                </div>
+                
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary">Update Student</button>
                     <a href="/students" class="btn">Cancel</a>

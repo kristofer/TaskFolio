@@ -51,9 +51,21 @@
             background: #667eea;
             color: white;
         }
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
         .btn-small {
             padding: 6px 12px;
             font-size: 12px;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
         .container {
             max-width: 1200px;
@@ -64,19 +76,37 @@
             margin-bottom: 20px;
             color: #333;
         }
-        .students-table {
+        .pane {
             background: white;
             border-radius: 10px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             overflow: hidden;
+            margin-bottom: 30px;
+        }
+        .pane-header {
+            background: #667eea;
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .pane-header h3 {
+            margin: 0;
+            font-size: 18px;
+        }
+        .pane-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
         }
         table {
             width: 100%;
             border-collapse: collapse;
         }
         thead {
-            background: #667eea;
-            color: white;
+            background: #f0f4f8;
+            color: #333;
         }
         th, td {
             padding: 15px;
@@ -167,42 +197,27 @@
             outline: none;
             border-color: #667eea;
         }
-        .cohort-group-header {
-            background: #f0f4f8;
-            font-weight: 600;
-            color: #2c5f7c;
+        input[type="checkbox"] {
             cursor: pointer;
-            user-select: none;
+            width: 18px;
+            height: 18px;
         }
-        .cohort-group-header:hover {
-            background: #e5ecf1;
+        .select-all-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: white;
+            font-size: 14px;
         }
-        th.sortable {
-            cursor: pointer;
-            user-select: none;
-            position: relative;
-            padding-right: 30px;
+        .top-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
         }
-        th.sortable:hover {
-            background: #5a6fd8;
-        }
-        th.sortable::after {
-            content: '⇅';
-            position: absolute;
-            right: 10px;
-            opacity: 0.5;
-        }
-        th.sortable.asc::after {
-            content: '▲';
-            opacity: 1;
-        }
-        th.sortable.desc::after {
-            content: '▼';
-            opacity: 1;
-        }
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+        .action-buttons {
+            display: flex;
+            gap: 10px;
         }
     </style>
 </head>
@@ -215,10 +230,9 @@
     </div>
 
     <div class="container">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div class="top-controls">
             <h2>Students</h2>
-            <div style="display: flex; gap: 10px;">
-                <button id="addTaskBtn" onclick="openAddTaskForFiltered()" class="btn btn-primary" disabled>+ Add Task to Filtered Students</button>
+            <div class="action-buttons">
                 <a href="/students/add" class="btn btn-primary">+ Add New Student</a>
                 <a href="/groups" class="btn btn-primary">Manage Groups</a>
                 <a href="/instructors" class="btn btn-primary">Manage Instructors</a>
@@ -239,198 +253,195 @@
                 <button type="button" onclick="document.getElementById('importForm').style.display='none'" class="btn">Cancel</button>
             </form>
         </div>
-        
-        {{if .Students}}
-        <!-- Search Box -->
-        <div class="search-container">
-            <input type="text" id="searchBox" class="search-box" placeholder="Search by name or cohort..." oninput="filterStudents()" onkeyup="filterStudents()">
-            <span id="filterCount" style="margin-left: 10px; color: #666; font-size: 14px;"></span>
+
+        <!-- Current Students Pane -->
+        <div class="pane">
+            <div class="pane-header">
+                <h3>Current Students</h3>
+                <div class="pane-controls">
+                    <div class="select-all-wrapper">
+                        <input type="checkbox" id="selectAllCurrent" onchange="toggleSelectAll('current')">
+                        <label for="selectAllCurrent" style="cursor: pointer; margin: 0;">Select All</label>
+                    </div>
+                    <button id="moveToPastBtn" class="btn btn-danger btn-small" onclick="moveStudents('current', 'move_to_past')" disabled>Move to Past</button>
+                </div>
+            </div>
+            {{if .CurrentStudents}}
+            <form id="currentStudentsForm">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;"></th>
+                            <th>Username</th>
+                            <th>Progress</th>
+                            <th>Cohort</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="currentStudentsBody">
+                        {{range .CurrentStudents}}
+                        <tr class="student-row">
+                            <td>
+                                <input type="checkbox" class="student-checkbox-current" value="{{.ID}}" onchange="updateMoveButton('current')">
+                            </td>
+                            <td>{{.Username}}</td>
+                            <td class="progress-cell">
+                                <span class="progress-badge badge-total" title="Total tasks">{{.Stats.Total}}</span>
+                                <span class="progress-badge badge-pending" title="Pending tasks">{{.Stats.Pending}}</span>
+                                <span class="progress-badge badge-blocked" title="Blocked tasks">{{.Stats.Blocked}}</span>
+                                <span class="progress-badge badge-inprogress" title="In progress tasks">{{.Stats.InProgress}}</span>
+                                <span class="progress-badge badge-completed" title="Completed tasks">{{.Stats.Completed}}</span>
+                            </td>
+                            <td>
+                                {{if .CohortName}}
+                                <span class="cohort-badge">{{.CohortName}}</span>
+                                {{else}}
+                                <span style="color: #999;">No cohort</span>
+                                {{end}}
+                            </td>
+                            <td>
+                                {{if .IsSuspended}}
+                                <span class="badge badge-suspended">Suspended</span>
+                                {{else}}
+                                <span class="badge badge-active">Active</span>
+                                {{end}}
+                            </td>
+                            <td>
+                                <a href="/students/edit?id={{.ID}}" class="btn btn-primary btn-small">Edit</a>
+                                <a href="/students/progress?id={{.ID}}" class="btn btn-primary btn-small">View Progress</a>
+                            </td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </form>
+            {{else}}
+            <div class="empty-state">
+                <h3>No current students</h3>
+                <p>Current students will appear here.</p>
+            </div>
+            {{end}}
         </div>
-        
-        <div class="students-table">
-            <table id="studentsTable">
-                <thead>
-                    <tr>
-                        <th class="sortable" onclick="sortTable(0)">Username</th>
-                        <th class="sortable" onclick="sortTable(1)">Progress</th>
-                        <th class="sortable" onclick="sortTable(2)">Cohort</th>
-                        <th class="sortable" onclick="sortTable(3)">Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="studentsTableBody">
-                    {{range .Students}}
-                    <tr class="student-row" data-username="{{.Username}}" data-cohort="{{.CohortName}}" data-student-id="{{.ID}}">
-                        <td>{{.Username}}</td>
-                        <td class="progress-cell">
-                            <span class="progress-badge badge-total" title="Total tasks">{{.Stats.Total}}</span>
-                            <span class="progress-badge badge-pending" title="Pending tasks">{{.Stats.Pending}}</span>
-                            <span class="progress-badge badge-blocked" title="Blocked tasks">{{.Stats.Blocked}}</span>
-                            <span class="progress-badge badge-inprogress" title="In progress tasks">{{.Stats.InProgress}}</span>
-                            <span class="progress-badge badge-completed" title="Completed tasks">{{.Stats.Completed}}</span>
-                        </td>
-                        <td>
-                            {{if .CohortName}}
-                            <span class="cohort-badge">{{.CohortName}}</span>
-                            {{else}}
-                            <span style="color: #999;">No cohort</span>
-                            {{end}}
-                        </td>
-                        <td>
-                            {{if .IsSuspended}}
-                            <span class="badge badge-suspended">Suspended</span>
-                            {{else}}
-                            <span class="badge badge-active">Active</span>
-                            {{end}}
-                        </td>
-                        <td>
-                            <a href="/students/edit?id={{.ID}}" class="btn btn-primary btn-small">Edit</a>
-                            <a href="/students/progress?id={{.ID}}" class="btn btn-primary btn-small">View Progress</a>
-                        </td>
-                    </tr>
-                    {{end}}
-                </tbody>
-            </table>
+
+        <!-- Past Students Pane -->
+        <div class="pane">
+            <div class="pane-header">
+                <h3>Past Students</h3>
+                <div class="pane-controls">
+                    <div class="select-all-wrapper">
+                        <input type="checkbox" id="selectAllPast" onchange="toggleSelectAll('past')">
+                        <label for="selectAllPast" style="cursor: pointer; margin: 0;">Select All</label>
+                    </div>
+                    <button id="moveToCurrentBtn" class="btn btn-success btn-small" onclick="moveStudents('past', 'move_to_current')" disabled>Move to Current</button>
+                </div>
+            </div>
+            {{if .PastStudents}}
+            <form id="pastStudentsForm">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;"></th>
+                            <th>Username</th>
+                            <th>Progress</th>
+                            <th>Cohort</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pastStudentsBody">
+                        {{range .PastStudents}}
+                        <tr class="student-row">
+                            <td>
+                                <input type="checkbox" class="student-checkbox-past" value="{{.ID}}" onchange="updateMoveButton('past')">
+                            </td>
+                            <td>{{.Username}}</td>
+                            <td class="progress-cell">
+                                <span class="progress-badge badge-total" title="Total tasks">{{.Stats.Total}}</span>
+                                <span class="progress-badge badge-pending" title="Pending tasks">{{.Stats.Pending}}</span>
+                                <span class="progress-badge badge-blocked" title="Blocked tasks">{{.Stats.Blocked}}</span>
+                                <span class="progress-badge badge-inprogress" title="In progress tasks">{{.Stats.InProgress}}</span>
+                                <span class="progress-badge badge-completed" title="Completed tasks">{{.Stats.Completed}}</span>
+                            </td>
+                            <td>
+                                {{if .CohortName}}
+                                <span class="cohort-badge">{{.CohortName}}</span>
+                                {{else}}
+                                <span style="color: #999;">No cohort</span>
+                                {{end}}
+                            </td>
+                            <td>
+                                {{if .IsSuspended}}
+                                <span class="badge badge-suspended">Suspended</span>
+                                {{else}}
+                                <span class="badge badge-active">Active</span>
+                                {{end}}
+                            </td>
+                            <td>
+                                <a href="/students/edit?id={{.ID}}" class="btn btn-primary btn-small">Edit</a>
+                                <a href="/students/progress?id={{.ID}}" class="btn btn-primary btn-small">View Progress</a>
+                            </td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </form>
+            {{else}}
+            <div class="empty-state">
+                <h3>No past students</h3>
+                <p>Past students will appear here.</p>
+            </div>
+            {{end}}
         </div>
-        {{else}}
-        <div class="empty-state">
-            <h2>No students found</h2>
-            <p>Students will appear here once they are registered.</p>
-        </div>
-        {{end}}
     </div>
     
     <script>
-        let sortDirection = [0, 0, 0, 0]; // 0: no sort, 1: ascending, -1: descending
-        let totalStudentCount = 0;
-        let currentFilteredStudents = [];
-        
-        // Initialize total student count on page load
-        window.addEventListener('DOMContentLoaded', function() {
-            const rows = document.querySelectorAll('.student-row');
-            totalStudentCount = rows.length;
-            updateFilteredStudents();
-        });
-        
-        function filterStudents() {
-            const searchTerm = document.getElementById('searchBox').value.toLowerCase();
-            const rows = document.querySelectorAll('.student-row');
-            let visibleCount = 0;
+        function toggleSelectAll(pane) {
+            const checkboxes = document.querySelectorAll('.student-checkbox-' + pane);
+            const selectAllCheckbox = document.getElementById('selectAll' + (pane === 'current' ? 'Current' : 'Past'));
             
-            rows.forEach(row => {
-                const username = row.getAttribute('data-username').toLowerCase();
-                const cohort = row.getAttribute('data-cohort').toLowerCase();
-                
-                if (username.includes(searchTerm) || cohort.includes(searchTerm)) {
-                    row.style.display = '';
-                    visibleCount++;
-                } else {
-                    row.style.display = 'none';
-                }
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = selectAllCheckbox.checked;
             });
             
-            updateFilteredStudents();
-            updateAddTaskButton(visibleCount);
-            updateFilterCount(visibleCount);
+            updateMoveButton(pane);
         }
         
-        function updateFilteredStudents() {
-            const rows = document.querySelectorAll('.student-row');
-            currentFilteredStudents = [];
-            
-            rows.forEach(row => {
-                if (row.style.display !== 'none') {
-                    const studentId = row.getAttribute('data-student-id');
-                    currentFilteredStudents.push(studentId);
-                }
-            });
+        function updateMoveButton(pane) {
+            const checkboxes = document.querySelectorAll('.student-checkbox-' + pane + ':checked');
+            const button = document.getElementById(pane === 'current' ? 'moveToPastBtn' : 'moveToCurrentBtn');
+            button.disabled = checkboxes.length === 0;
         }
         
-        function shouldEnableFilteredTaskButton(visibleCount) {
-            const searchBox = document.getElementById('searchBox');
-            // Enable button only when search is active and results are shown (but not all students)
-            return searchBox.value.trim() !== '' && visibleCount > 0 && visibleCount < totalStudentCount;
-        }
-        
-        function updateAddTaskButton(visibleCount) {
-            const addTaskBtn = document.getElementById('addTaskBtn');
-            addTaskBtn.disabled = !shouldEnableFilteredTaskButton(visibleCount);
-        }
-        
-        function updateFilterCount(visibleCount) {
-            const filterCount = document.getElementById('filterCount');
-            const searchBox = document.getElementById('searchBox');
+        function moveStudents(pane, action) {
+            const checkboxes = document.querySelectorAll('.student-checkbox-' + pane + ':checked');
             
-            if (searchBox.value.trim() === '') {
-                filterCount.textContent = '';
-            } else if (visibleCount === 0) {
-                filterCount.textContent = 'No students found';
-                filterCount.style.color = '#991b1b';
-            } else if (visibleCount < totalStudentCount) {
-                filterCount.textContent = `Showing ${visibleCount} of ${totalStudentCount} students`;
-                filterCount.style.color = '#2c5f7c';
-                filterCount.style.fontWeight = '600';
-            } else {
-                filterCount.textContent = `Showing all ${totalStudentCount} students`;
-                filterCount.style.color = '#666';
-                filterCount.style.fontWeight = 'normal';
-            }
-        }
-        
-        function sortTable(columnIndex) {
-            const table = document.getElementById('studentsTable');
-            const tbody = document.getElementById('studentsTableBody');
-            const rows = Array.from(tbody.querySelectorAll('.student-row'));
-            const headers = table.querySelectorAll('th.sortable');
-            
-            // Toggle sort direction: 0 -> 1 (asc) -> -1 (desc) -> 1 (asc)...
-            if (sortDirection[columnIndex] === 0 || sortDirection[columnIndex] === -1) {
-                sortDirection[columnIndex] = 1;
-            } else {
-                sortDirection[columnIndex] = -1;
-            }
-            
-            // Reset other column sort indicators
-            headers.forEach(header => {
-                header.classList.remove('asc', 'desc');
-            });
-            
-            // Set current column sort indicator
-            headers[columnIndex].classList.add(sortDirection[columnIndex] === 1 ? 'asc' : 'desc');
-            
-            // Sort rows
-            rows.sort((a, b) => {
-                const aText = a.cells[columnIndex].textContent.trim().toLowerCase();
-                const bText = b.cells[columnIndex].textContent.trim().toLowerCase();
-                
-                if (aText < bText) return -1 * sortDirection[columnIndex];
-                if (aText > bText) return 1 * sortDirection[columnIndex];
-                return 0;
-            });
-            
-            // Clear and re-append sorted rows
-            rows.forEach(row => tbody.appendChild(row));
-            
-            updateFilteredStudents();
-        }
-        
-        function openAddTaskForFiltered() {
-            if (currentFilteredStudents.length === 0) {
-                alert('No students selected');
+            if (checkboxes.length === 0) {
+                alert('Please select at least one student');
                 return;
             }
             
-            // Create a form to submit to the add task page with filtered student IDs
+            // Create a form to submit
             const form = document.createElement('form');
-            form.method = 'GET';
-            form.action = '/tasks/add';
+            form.method = 'POST';
+            form.action = '/students/move';
             
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = 'filtered_students';
-            input.value = currentFilteredStudents.join(',');
+            // Add selected student IDs
+            checkboxes.forEach(checkbox => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'student_ids';
+                input.value = checkbox.value;
+                form.appendChild(input);
+            });
             
-            form.appendChild(input);
+            // Add action
+            const actionInput = document.createElement('input');
+            actionInput.type = 'hidden';
+            actionInput.name = 'action';
+            actionInput.value = action;
+            form.appendChild(actionInput);
+            
             document.body.appendChild(form);
             form.submit();
         }

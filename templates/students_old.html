@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Students - Tasking</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #2C5F7C 0%, #5FA896 100%);
+            color: white;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        h1 {
+            font-size: 24px;
+        }
+        .btn {
+            padding: 8px 16px;
+            background: white;
+            color: #667eea;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: 600;
+            font-size: 14px;
+            transition: opacity 0.3s;
+            border: none;
+            cursor: pointer;
+            display: inline-block;
+        }
+        .btn:hover {
+            opacity: 0.9;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+        h2 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+        .students-table {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        thead {
+            background: #667eea;
+            color: white;
+        }
+        th, td {
+            padding: 15px;
+            text-align: left;
+        }
+        tbody tr {
+            border-bottom: 1px solid #f0f0f0;
+            transition: background-color 0.2s;
+        }
+        tbody tr:hover {
+            background: #f9f9f9;
+        }
+        .badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .badge-active {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .badge-suspended {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        .cohort-badge {
+            background: #e0e7ff;
+            color: #4338ca;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .progress-cell {
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .progress-badge {
+            display: inline-block;
+            padding: 3px 6px;
+            border-radius: 4px;
+            margin: 1px;
+            min-width: 20px;
+            text-align: center;
+        }
+        .badge-total {
+            background: #3b82f6;
+            color: white;
+        }
+        .badge-pending {
+            background: #10b981;
+            color: white;
+        }
+        .badge-blocked {
+            background: #ef4444;
+            color: white;
+        }
+        .badge-inprogress {
+            background: #f59e0b;
+            color: white;
+        }
+        .badge-completed {
+            background: #3b82f6;
+            color: white;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+        .search-container {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 15px;
+            gap: 10px;
+        }
+        .search-box {
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            width: 250px;
+        }
+        .search-box:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .cohort-group-header {
+            background: #f0f4f8;
+            font-weight: 600;
+            color: #2c5f7c;
+            cursor: pointer;
+            user-select: none;
+        }
+        .cohort-group-header:hover {
+            background: #e5ecf1;
+        }
+        th.sortable {
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            padding-right: 30px;
+        }
+        th.sortable:hover {
+            background: #5a6fd8;
+        }
+        th.sortable::after {
+            content: '⇅';
+            position: absolute;
+            right: 10px;
+            opacity: 0.5;
+        }
+        th.sortable.asc::after {
+            content: '▲';
+            opacity: 1;
+        }
+        th.sortable.desc::after {
+            content: '▼';
+            opacity: 1;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1>Tasking - Manage Students</h1>
+            <a href="/" class="btn">← Back to Tasks</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2>Students</h2>
+            <div style="display: flex; gap: 10px;">
+                <button id="addTaskBtn" onclick="openAddTaskForFiltered()" class="btn btn-primary" disabled>+ Add Task to Filtered Students</button>
+                <a href="/students/add" class="btn btn-primary">+ Add New Student</a>
+                <a href="/groups" class="btn btn-primary">Manage Groups</a>
+                <a href="/instructors" class="btn btn-primary">Manage Instructors</a>
+                <button onclick="document.getElementById('importForm').style.display='block'" class="btn btn-primary">Import Students</button>
+            </div>
+        </div>
+        
+        <!-- Import Students Form (hidden by default) -->
+        <div id="importForm" style="display: none; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px;">
+            <h3 style="margin-bottom: 15px;">Import Students from CSV</h3>
+            <p style="margin-bottom: 15px; color: #666;">Upload a CSV file with format: Username, Password, Cohort</p>
+            <p style="margin-bottom: 15px; color: #666; font-size: 14px;">Example:<br/>
+            AndrewYounger, zipcode0, Java1.0<br/>
+            BillyBobThornton, zipcode1, Data1.0</p>
+            <form action="/students/import" method="POST" enctype="multipart/form-data" style="display: flex; gap: 10px; align-items: center;">
+                <input type="file" name="csvfile" accept=".csv" required style="padding: 8px;">
+                <button type="submit" class="btn btn-primary">Upload</button>
+                <button type="button" onclick="document.getElementById('importForm').style.display='none'" class="btn">Cancel</button>
+            </form>
+        </div>
+        
+        {{if .Students}}
+        <!-- Search Box -->
+        <div class="search-container">
+            <input type="text" id="searchBox" class="search-box" placeholder="Search by name or cohort..." oninput="filterStudents()" onkeyup="filterStudents()">
+            <span id="filterCount" style="margin-left: 10px; color: #666; font-size: 14px;"></span>
+        </div>
+        
+        <div class="students-table">
+            <table id="studentsTable">
+                <thead>
+                    <tr>
+                        <th class="sortable" onclick="sortTable(0)">Username</th>
+                        <th class="sortable" onclick="sortTable(1)">Progress</th>
+                        <th class="sortable" onclick="sortTable(2)">Cohort</th>
+                        <th class="sortable" onclick="sortTable(3)">Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="studentsTableBody">
+                    {{range .Students}}
+                    <tr class="student-row" data-username="{{.Username}}" data-cohort="{{.CohortName}}" data-student-id="{{.ID}}">
+                        <td>{{.Username}}</td>
+                        <td class="progress-cell">
+                            <span class="progress-badge badge-total" title="Total tasks">{{.Stats.Total}}</span>
+                            <span class="progress-badge badge-pending" title="Pending tasks">{{.Stats.Pending}}</span>
+                            <span class="progress-badge badge-blocked" title="Blocked tasks">{{.Stats.Blocked}}</span>
+                            <span class="progress-badge badge-inprogress" title="In progress tasks">{{.Stats.InProgress}}</span>
+                            <span class="progress-badge badge-completed" title="Completed tasks">{{.Stats.Completed}}</span>
+                        </td>
+                        <td>
+                            {{if .CohortName}}
+                            <span class="cohort-badge">{{.CohortName}}</span>
+                            {{else}}
+                            <span style="color: #999;">No cohort</span>
+                            {{end}}
+                        </td>
+                        <td>
+                            {{if .IsSuspended}}
+                            <span class="badge badge-suspended">Suspended</span>
+                            {{else}}
+                            <span class="badge badge-active">Active</span>
+                            {{end}}
+                        </td>
+                        <td>
+                            <a href="/students/edit?id={{.ID}}" class="btn btn-primary btn-small">Edit</a>
+                            <a href="/students/progress?id={{.ID}}" class="btn btn-primary btn-small">View Progress</a>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <div class="empty-state">
+            <h2>No students found</h2>
+            <p>Students will appear here once they are registered.</p>
+        </div>
+        {{end}}
+    </div>
+    
+    <script>
+        let sortDirection = [0, 0, 0, 0]; // 0: no sort, 1: ascending, -1: descending
+        let totalStudentCount = 0;
+        let currentFilteredStudents = [];
+        
+        // Initialize total student count on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            const rows = document.querySelectorAll('.student-row');
+            totalStudentCount = rows.length;
+            updateFilteredStudents();
+        });
+        
+        function filterStudents() {
+            const searchTerm = document.getElementById('searchBox').value.toLowerCase();
+            const rows = document.querySelectorAll('.student-row');
+            let visibleCount = 0;
+            
+            rows.forEach(row => {
+                const username = row.getAttribute('data-username').toLowerCase();
+                const cohort = row.getAttribute('data-cohort').toLowerCase();
+                
+                if (username.includes(searchTerm) || cohort.includes(searchTerm)) {
+                    row.style.display = '';
+                    visibleCount++;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+            
+            updateFilteredStudents();
+            updateAddTaskButton(visibleCount);
+            updateFilterCount(visibleCount);
+        }
+        
+        function updateFilteredStudents() {
+            const rows = document.querySelectorAll('.student-row');
+            currentFilteredStudents = [];
+            
+            rows.forEach(row => {
+                if (row.style.display !== 'none') {
+                    const studentId = row.getAttribute('data-student-id');
+                    currentFilteredStudents.push(studentId);
+                }
+            });
+        }
+        
+        function shouldEnableFilteredTaskButton(visibleCount) {
+            const searchBox = document.getElementById('searchBox');
+            // Enable button only when search is active and results are shown (but not all students)
+            return searchBox.value.trim() !== '' && visibleCount > 0 && visibleCount < totalStudentCount;
+        }
+        
+        function updateAddTaskButton(visibleCount) {
+            const addTaskBtn = document.getElementById('addTaskBtn');
+            addTaskBtn.disabled = !shouldEnableFilteredTaskButton(visibleCount);
+        }
+        
+        function updateFilterCount(visibleCount) {
+            const filterCount = document.getElementById('filterCount');
+            const searchBox = document.getElementById('searchBox');
+            
+            if (searchBox.value.trim() === '') {
+                filterCount.textContent = '';
+            } else if (visibleCount === 0) {
+                filterCount.textContent = 'No students found';
+                filterCount.style.color = '#991b1b';
+            } else if (visibleCount < totalStudentCount) {
+                filterCount.textContent = `Showing ${visibleCount} of ${totalStudentCount} students`;
+                filterCount.style.color = '#2c5f7c';
+                filterCount.style.fontWeight = '600';
+            } else {
+                filterCount.textContent = `Showing all ${totalStudentCount} students`;
+                filterCount.style.color = '#666';
+                filterCount.style.fontWeight = 'normal';
+            }
+        }
+        
+        function sortTable(columnIndex) {
+            const table = document.getElementById('studentsTable');
+            const tbody = document.getElementById('studentsTableBody');
+            const rows = Array.from(tbody.querySelectorAll('.student-row'));
+            const headers = table.querySelectorAll('th.sortable');
+            
+            // Toggle sort direction: 0 -> 1 (asc) -> -1 (desc) -> 1 (asc)...
+            if (sortDirection[columnIndex] === 0 || sortDirection[columnIndex] === -1) {
+                sortDirection[columnIndex] = 1;
+            } else {
+                sortDirection[columnIndex] = -1;
+            }
+            
+            // Reset other column sort indicators
+            headers.forEach(header => {
+                header.classList.remove('asc', 'desc');
+            });
+            
+            // Set current column sort indicator
+            headers[columnIndex].classList.add(sortDirection[columnIndex] === 1 ? 'asc' : 'desc');
+            
+            // Sort rows
+            rows.sort((a, b) => {
+                const aText = a.cells[columnIndex].textContent.trim().toLowerCase();
+                const bText = b.cells[columnIndex].textContent.trim().toLowerCase();
+                
+                if (aText < bText) return -1 * sortDirection[columnIndex];
+                if (aText > bText) return 1 * sortDirection[columnIndex];
+                return 0;
+            });
+            
+            // Clear and re-append sorted rows
+            rows.forEach(row => tbody.appendChild(row));
+            
+            updateFilteredStudents();
+        }
+        
+        function openAddTaskForFiltered() {
+            if (currentFilteredStudents.length === 0) {
+                alert('No students selected');
+                return;
+            }
+            
+            // Create a form to submit to the add task page with filtered student IDs
+            const form = document.createElement('form');
+            form.method = 'GET';
+            form.action = '/tasks/add';
+            
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'filtered_students';
+            input.value = currentFilteredStudents.join(',');
+            
+            form.appendChild(input);
+            document.body.appendChild(form);
+            form.submit();
+        }
+    </script>
+</body>
+</html>
