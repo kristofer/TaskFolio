@@ -263,7 +263,7 @@
                         <input type="checkbox" id="selectAllCurrent" onchange="toggleSelectAll('current')">
                         <label for="selectAllCurrent" style="cursor: pointer; margin: 0;">Select All</label>
                     </div>
-                    <button id="moveToPastBtn" class="btn btn-danger btn-small" onclick="moveStudents('current', 'move_to_past')" disabled>Move to Past</button>
+                    <button id="moveToPastBtn" class="btn btn-danger btn-small" onclick="moveStudents('current', 'move_to_past')" disabled aria-label="Move selected current students to past students">Move to Past</button>
                 </div>
             </div>
             {{if .CurrentStudents}}
@@ -333,7 +333,7 @@
                         <input type="checkbox" id="selectAllPast" onchange="toggleSelectAll('past')">
                         <label for="selectAllPast" style="cursor: pointer; margin: 0;">Select All</label>
                     </div>
-                    <button id="moveToCurrentBtn" class="btn btn-success btn-small" onclick="moveStudents('past', 'move_to_current')" disabled>Move to Current</button>
+                    <button id="moveToCurrentBtn" class="btn btn-success btn-small" onclick="moveStudents('past', 'move_to_current')" disabled aria-label="Move selected past students to current students">Move to Current</button>
                 </div>
             </div>
             {{if .PastStudents}}
