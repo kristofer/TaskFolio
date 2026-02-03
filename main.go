@@ -1460,18 +1460,19 @@ func taskStatsHandler(w http.ResponseWriter, r *http.Request) {
 	// Get all unique group tasks (tasks created by instructors that were assigned to multiple students)
 	// We identify these by looking at tasks with the same title, created_by, and cohort_id
 	type GroupTask struct {
-		Title       string
-		Description string
-		DueDate     string
-		TaskType    string
-		ResourceURL string
-		CreatedBy   int
-		CreatorName string
-		CohortID    string
-		CreatedAt   string
-		TotalCount  int
-		InProgress  int
-		Completed   int
+		Title               string
+		Description         string
+		DueDate             string
+		TaskType            string
+		ResourceURL         string
+		CreatedBy           int
+		CreatorName         string
+		CohortID            string
+		CreatedAt           string
+		TotalCount          int
+		InProgress          int
+		Completed           int
+		CompletionPercentage int
 	}
 
 	rows, err := db.Query(`
@@ -1513,6 +1514,10 @@ func taskStatsHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("Error scanning group task: %v", err)
 			continue
 		}
+		// Calculate completion percentage
+		if gt.TotalCount > 0 {
+			gt.CompletionPercentage = (gt.Completed * 100) / gt.TotalCount
+		}
 		groupTasks = append(groupTasks, gt)
 	}
 
@@ -1525,6 +1530,74 @@ func taskStatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	templates.ExecuteTemplate(w, "task_stats.html", data)
+}
+
+// exportGroupTaskHandler exports a single group task as CSV in the import format
+func exportGroupTaskHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can export tasks
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	// Get parameters
+	title := r.URL.Query().Get("title")
+	createdByStr := r.URL.Query().Get("created_by")
+	cohortID := r.URL.Query().Get("cohort_id")
+
+	if title == "" || createdByStr == "" {
+		http.Error(w, "Missing required parameters", http.StatusBadRequest)
+		return
+	}
+
+	createdBy, err := strconv.Atoi(createdByStr)
+	if err != nil {
+		http.Error(w, "Invalid created_by parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Get the task details (get first instance for the task data)
+	var taskTitle, description, dueDate, taskType, resourceURL string
+	err = db.QueryRow(`
+		SELECT title, COALESCE(description, ''), COALESCE(due_date, ''), 
+		       COALESCE(task_type, ''), COALESCE(resource_url, '')
+		FROM tasks
+		WHERE title = ? AND created_by = ? AND COALESCE(cohort_id, '') = ?
+		LIMIT 1
+	`, title, createdBy, cohortID).Scan(&taskTitle, &description, &dueDate, &taskType, &resourceURL)
+
+	if err != nil {
+		http.Error(w, "Task not found", http.StatusNotFound)
+		return
+	}
+
+	// Set headers for CSV download
+	filename := "task_export_" + strings.ReplaceAll(taskTitle, " ", "_") + ".csv"
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
+
+	// Write CSV data in the import format: Task Title, Description, DueDate, TaskType, ResourceURL
+	csvWriter := csv.NewWriter(w)
+	defer csvWriter.Flush()
+
+	// Write the single task row
+	record := []string{taskTitle, description, dueDate, taskType, resourceURL}
+	if err := csvWriter.Write(record); err != nil {
+		log.Printf("Error writing CSV: %v", err)
+		return
+	}
 }
 
 // taskDetailHandler shows a specific task and all students assigned to it
@@ -2699,6 +2772,7 @@ func main() {
 	http.HandleFunc("/groups/edit", editGroupHandler)
 	http.HandleFunc("/groups/delete", deleteGroupHandler)
 	http.HandleFunc("/tasks/stats", taskStatsHandler)
+	http.HandleFunc("/tasks/export", exportGroupTaskHandler)
 	http.HandleFunc("/tasks/detail", taskDetailHandler)
 	http.HandleFunc("/tasks/delete-group", deleteGroupTaskHandler)
 	http.HandleFunc("/tasks/edit-group", editGroupTaskHandler)
