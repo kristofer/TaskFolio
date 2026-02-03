@@ -126,6 +126,9 @@
             opacity: 0.9;
             transform: translateY(-1px);
         }
+        .btn-spacing {
+            margin-left: 8px;
+        }
         .empty-state {
             text-align: center;
             padding: 80px 20px;
@@ -187,11 +190,13 @@
                             <span class="stat-number">{{.InProgress}}</span>
                         </td>
                         <td>
-                            <span class="stat-number">{{.Completed}}</span>
+                            <span class="stat-number">{{.Completed}}, {{.CompletionPercentage}}%</span>
                         </td>
                         <td>
                             <a href="/tasks/detail?title={{urlquery .Title}}&created_by={{.CreatedBy}}&cohort_id={{urlquery .CohortID}}" 
                                class="details-btn">Details</a>
+                            <a href="/tasks/export?title={{urlquery .Title}}&created_by={{.CreatedBy}}&cohort_id={{urlquery .CohortID}}" 
+                               class="details-btn btn-spacing">Export</a>
                         </td>
                     </tr>
                     {{end}}
