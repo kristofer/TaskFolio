@@ -4679,3 +4679,112 @@ func TestGetTaskStatsForStudent(t *testing.T) {
 	}
 }
 
+func TestGroupTaskCompletionPercentage(t *testing.T) {
+	testDB := createTestDB(t)
+	defer testDB.Close()
+
+	// Set global db to test database
+	oldDB := db
+	db = testDB
+	defer func() { db = oldDB }()
+
+	// Create an instructor
+	result, err := testDB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+		"testinstructor", "password", "instructor")
+	if err != nil {
+		t.Fatalf("Failed to create instructor: %v", err)
+	}
+	instructorID, _ := result.LastInsertId()
+
+	// Create students
+	var studentIDs []int64
+	for i := 1; i <= 5; i++ {
+		result, err := testDB.Exec("INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+			fmt.Sprintf("student%d", i), "password", "student")
+		if err != nil {
+			t.Fatalf("Failed to create student%d: %v", i, err)
+		}
+		studentID, _ := result.LastInsertId()
+		studentIDs = append(studentIDs, studentID)
+	}
+
+	// Create a group task with different completion statuses
+	taskTitle := "Test Group Task"
+	taskDesc := "Test Description"
+	taskType := "group-programming-project"
+	resourceURL := "https://example.com/task"
+	dueDate := "2026-02-20"
+
+	// 3 completed, 1 in_progress, 1 pending = 60% completion
+	statuses := []string{"completed", "completed", "completed", "in_progress", "pending"}
+	for i, studentID := range studentIDs {
+		_, err := testDB.Exec(`
+			INSERT INTO tasks (title, description, due_date, task_type, resource_url, status, owner_id, created_by)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`, taskTitle, taskDesc, dueDate, taskType, resourceURL, statuses[i], studentID, instructorID)
+		if err != nil {
+			t.Fatalf("Failed to create task for student %d: %v", studentID, err)
+		}
+	}
+
+	// Query the group task statistics like taskStatsHandler does
+	rows, err := testDB.Query(`
+		SELECT
+			t.title,
+			COALESCE(t.description, '') as description,
+			COALESCE(t.due_date, '') as due_date,
+			COALESCE(t.task_type, '') as task_type,
+			COALESCE(t.resource_url, '') as resource_url,
+			t.created_by,
+			creator.username as creator_name,
+			COALESCE(t.cohort_id, '') as cohort_id,
+			MIN(t.created_at) as created_at,
+			COUNT(*) as total_count,
+			SUM(CASE WHEN t.status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+			SUM(CASE WHEN t.status = 'completed' THEN 1 ELSE 0 END) as completed
+		FROM tasks t
+		JOIN users u ON t.owner_id = u.id
+		JOIN users creator ON t.created_by = creator.id
+		WHERE t.created_by IN (SELECT id FROM users WHERE role = 'instructor')
+		AND u.role = 'student'
+		GROUP BY t.title, t.created_by, creator.username, COALESCE(t.cohort_id, '')
+		HAVING COUNT(*) > 1
+	`)
+	if err != nil {
+		t.Fatalf("Failed to query group task statistics: %v", err)
+	}
+	defer rows.Close()
+
+	var totalCount, inProgress, completed, completionPercentage int
+	if rows.Next() {
+		var title, description, dueDate, taskType, resourceURL, creatorName, cohortID, createdAt string
+		var createdBy int
+		err := rows.Scan(&title, &description, &dueDate, &taskType, &resourceURL,
+			&createdBy, &creatorName, &cohortID, &createdAt,
+			&totalCount, &inProgress, &completed)
+		if err != nil {
+			t.Fatalf("Failed to scan group task: %v", err)
+		}
+
+		// Calculate completion percentage as done in taskStatsHandler
+		if totalCount > 0 {
+			completionPercentage = (completed * 100) / totalCount
+		}
+	}
+
+	// Verify statistics
+	if totalCount != 5 {
+		t.Errorf("Expected 5 total tasks, got %d", totalCount)
+	}
+	if inProgress != 1 {
+		t.Errorf("Expected 1 in-progress task, got %d", inProgress)
+	}
+	if completed != 3 {
+		t.Errorf("Expected 3 completed tasks, got %d", completed)
+	}
+	if completionPercentage != 60 {
+		t.Errorf("Expected 60%% completion percentage, got %d%%", completionPercentage)
+	}
+}
+
+
