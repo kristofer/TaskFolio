@@ -307,7 +307,7 @@
                 <div class="tab-header">
                     <h3>Current Students</h3>
                     <div class="tab-controls">
-                        <input type="text" id="studentSearchBox" class="search-box" placeholder="Search students..." oninput="filterStudents()">
+                        <input type="text" id="studentSearchBox" class="search-box" placeholder="Search students..." aria-label="Search students by username or cohort" oninput="filterStudents()">
                         <div class="select-all-wrapper">
                             <input type="checkbox" id="selectAllCurrent" onchange="toggleSelectAll('current')">
                             <label for="selectAllCurrent" style="cursor: pointer; margin: 0;">Select All</label>
@@ -499,8 +499,8 @@
             const rows = document.querySelectorAll('#currentStudentsBody .student-row');
             
             rows.forEach(row => {
-                const username = row.getAttribute('data-username').toLowerCase();
-                const cohort = row.getAttribute('data-cohort').toLowerCase();
+                const username = (row.getAttribute('data-username') || '').toLowerCase();
+                const cohort = (row.getAttribute('data-cohort') || '').toLowerCase();
                 
                 // Show row if username or cohort matches the search term
                 if (username.includes(searchTerm) || cohort.includes(searchTerm)) {
@@ -513,11 +513,6 @@
         
         function addTaskToFiltered() {
             const checkboxes = document.querySelectorAll('.student-checkbox-current:checked');
-            
-            if (checkboxes.length === 0) {
-                alert('Please select at least one student');
-                return;
-            }
             
             // Get the IDs of selected students
             const studentIds = Array.from(checkboxes).map(cb => cb.value);
