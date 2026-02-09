@@ -129,6 +129,32 @@
         .btn-spacing {
             margin-left: 8px;
         }
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .toolbar .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .select-all {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #374151;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        .checkbox-cell {
+            width: 48px;
+        }
+        .checkbox-input {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
         .empty-state {
             text-align: center;
             padding: 80px 20px;
@@ -163,45 +189,56 @@
         
         {{if .GroupTasks}}
         <div class="stats-table">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Task Name</th>
-                        <th>Assigned By</th>
-                        <th>Total Assigned</th>
-                        <th>In Progress</th>
-                        <th>Completed</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {{range .GroupTasks}}
-                    <tr>
-                        <td>
-                            <div class="task-name">{{.Title}}</div>
-                        </td>
-                        <td>
-                            <span class="instructor-name">{{.CreatorName}}</span>
-                        </td>
-                        <td>
-                            <span class="stat-number">{{.TotalCount}}</span>
-                        </td>
-                        <td>
-                            <span class="stat-number">{{.InProgress}}</span>
-                        </td>
-                        <td>
-                            <span class="stat-number">{{.Completed}}, {{.CompletionPercentage}}%</span>
-                        </td>
-                        <td>
-                            <a href="/tasks/detail?title={{urlquery .Title}}&created_by={{.CreatedBy}}&cohort_id={{urlquery .CohortID}}" 
-                               class="details-btn">Details</a>
-                            <a href="/tasks/export?title={{urlquery .Title}}&created_by={{.CreatedBy}}&cohort_id={{urlquery .CohortID}}" 
-                               class="details-btn btn-spacing">Export</a>
-                        </td>
-                    </tr>
-                    {{end}}
-                </tbody>
-            </table>
+            <form method="POST" action="/tasks/export">
+                <div class="toolbar">
+                    <label class="select-all">
+                        <input id="select-all" class="checkbox-input" type="checkbox">
+                        Select all tasks
+                    </label>
+                    <button type="submit" class="btn">Export</button>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="checkbox-cell"></th>
+                            <th>Task Name</th>
+                            <th>Assigned By</th>
+                            <th>Total Assigned</th>
+                            <th>In Progress</th>
+                            <th>Completed</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range .GroupTasks}}
+                        <tr>
+                            <td class="checkbox-cell">
+                                <input class="checkbox-input task-checkbox" type="checkbox" name="task" value="title={{urlquery .Title}}&created_by={{.CreatedBy}}&cohort_id={{urlquery .CohortID}}">
+                            </td>
+                            <td>
+                                <div class="task-name">{{.Title}}</div>
+                            </td>
+                            <td>
+                                <span class="instructor-name">{{.CreatorName}}</span>
+                            </td>
+                            <td>
+                                <span class="stat-number">{{.TotalCount}}</span>
+                            </td>
+                            <td>
+                                <span class="stat-number">{{.InProgress}}</span>
+                            </td>
+                            <td>
+                                <span class="stat-number">{{.Completed}}, {{.CompletionPercentage}}%</span>
+                            </td>
+                            <td>
+                                <a href="/tasks/detail?title={{urlquery .Title}}&created_by={{.CreatedBy}}&cohort_id={{urlquery .CohortID}}" 
+                                   class="details-btn">Details</a>
+                            </td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </form>
         </div>
         {{else}}
         <div class="empty-state">
@@ -213,5 +250,17 @@
         </div>
         {{end}}
     </div>
+    <script>
+        const selectAll = document.getElementById('select-all');
+        const taskCheckboxes = document.querySelectorAll('.task-checkbox');
+
+        if (selectAll) {
+            selectAll.addEventListener('change', () => {
+                taskCheckboxes.forEach((checkbox) => {
+                    checkbox.checked = selectAll.checked;
+                });
+            });
+        }
+    </script>
 </body>
 </html>

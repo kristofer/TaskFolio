@@ -63,11 +63,11 @@ type Group struct {
 }
 
 type TaskStats struct {
-	Total       int
-	Pending     int
-	InProgress  int
-	Blocked     int
-	Completed   int
+	Total      int
+	Pending    int
+	InProgress int
+	Blocked    int
+	Completed  int
 }
 
 func initDB() error {
@@ -214,7 +214,7 @@ func migrateDatabase() error {
 			return fmt.Errorf("failed to add is_current column: %v", err)
 		}
 		log.Println("Added is_current column to users table")
-		
+
 		// Set existing students to is_current = 1 (true)
 		_, err = db.Exec(`UPDATE users SET is_current = 1 WHERE role = 'student' AND is_current IS NULL`)
 		if err != nil {
@@ -326,7 +326,7 @@ func migrateDatabase() error {
 			return fmt.Errorf("failed to add display_order column: %v", err)
 		}
 		log.Println("Added display_order column to tasks table")
-		
+
 		// Initialize display_order for existing tasks based on created_at
 		// Order within each status/owner_id combination
 		_, err = db.Exec(`
@@ -427,13 +427,13 @@ func migrateTaskTypeConstraint() error {
 	// Old task types: 'reading', 'coding', 'submission', 'document-creation'
 	// New task types: 'group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev'
 	// Mapping: 'coding' -> 'individual-programming-lab', 'submission' -> '', 'document-creation' -> 'document'
-	
+
 	// Check which columns exist in the old table
 	var groupIDExists, commentsExists, displayOrderExists int
 	tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='group_id'`).Scan(&groupIDExists)
 	tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='comments'`).Scan(&commentsExists)
 	tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('tasks') WHERE name='display_order'`).Scan(&displayOrderExists)
-	
+
 	// Build SELECT statement based on existing columns
 	groupIDSelect := "NULL"
 	if groupIDExists > 0 {
@@ -447,7 +447,7 @@ func migrateTaskTypeConstraint() error {
 	if displayOrderExists > 0 {
 		displayOrderSelect = "COALESCE(display_order, 0)"
 	}
-	
+
 	insertSQL := fmt.Sprintf(`
 		INSERT INTO tasks_new (id, title, description, due_date, status, owner_id, created_by, assigned_to, created_at, task_type, resource_url, cohort_id, in_progress_date, done_date, group_id, comments, display_order)
 		SELECT id, title, description, due_date, status, owner_id, created_by,
@@ -462,7 +462,7 @@ func migrateTaskTypeConstraint() error {
 		       in_progress_date, done_date, %s, %s, %s
 		FROM tasks
 	`, groupIDSelect, commentsSelect, displayOrderSelect)
-	
+
 	_, err = tx.Exec(insertSQL)
 	if err != nil {
 		return err
@@ -551,19 +551,19 @@ func studentsHandler(w http.ResponseWriter, r *http.Request) {
 		var s User
 		s.Role = "student"
 		rows.Scan(&s.ID, &s.Username, &s.CohortName, &s.IsSuspended, &s.IsCurrent)
-		
+
 		// Get task statistics for this student
 		stats, err := getTaskStatsForStudent(s.ID)
 		if err != nil {
 			log.Printf("Error getting task stats for student %d: %v", s.ID, err)
 			stats = TaskStats{} // Use empty stats on error
 		}
-		
+
 		studentWithStats := StudentWithStats{
 			User:  s,
 			Stats: stats,
 		}
-		
+
 		if s.IsCurrent {
 			currentStudents = append(currentStudents, studentWithStats)
 		} else {
@@ -1573,18 +1573,18 @@ func taskStatsHandler(w http.ResponseWriter, r *http.Request) {
 	// Get all unique group tasks (tasks created by instructors that were assigned to multiple students)
 	// We identify these by looking at tasks with the same title, created_by, and cohort_id
 	type GroupTask struct {
-		Title               string
-		Description         string
-		DueDate             string
-		TaskType            string
-		ResourceURL         string
-		CreatedBy           int
-		CreatorName         string
-		CohortID            string
-		CreatedAt           string
-		TotalCount          int
-		InProgress          int
-		Completed           int
+		Title                string
+		Description          string
+		DueDate              string
+		TaskType             string
+		ResourceURL          string
+		CreatedBy            int
+		CreatorName          string
+		CohortID             string
+		CreatedAt            string
+		TotalCount           int
+		InProgress           int
+		Completed            int
 		CompletionPercentage int
 	}
 
@@ -1665,6 +1665,80 @@ func exportGroupTaskHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == http.MethodPost {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "Invalid form data", http.StatusBadRequest)
+			return
+		}
+
+		selected := r.Form["task"]
+		if len(selected) == 0 {
+			http.Error(w, "No tasks selected", http.StatusBadRequest)
+			return
+		}
+
+		stmt, err := db.Prepare(`
+			SELECT title, COALESCE(description, ''), COALESCE(due_date, ''),
+			       COALESCE(task_type, ''), COALESCE(resource_url, '')
+			FROM tasks
+			WHERE title = ? AND created_by = ? AND COALESCE(cohort_id, '') = ?
+			LIMIT 1
+		`)
+		if err != nil {
+			http.Error(w, "Failed to prepare export query", http.StatusInternalServerError)
+			return
+		}
+		defer stmt.Close()
+
+		records := make([][]string, 0, len(selected))
+		for _, item := range selected {
+			parsed, err := url.ParseQuery(item)
+			if err != nil {
+				http.Error(w, "Invalid task selection", http.StatusBadRequest)
+				return
+			}
+
+			title := parsed.Get("title")
+			createdByStr := parsed.Get("created_by")
+			cohortID := parsed.Get("cohort_id")
+			if title == "" || createdByStr == "" {
+				http.Error(w, "Missing required parameters", http.StatusBadRequest)
+				return
+			}
+
+			createdBy, err := strconv.Atoi(createdByStr)
+			if err != nil {
+				http.Error(w, "Invalid created_by parameter", http.StatusBadRequest)
+				return
+			}
+
+			var taskTitle, description, dueDate, taskType, resourceURL string
+			err = stmt.QueryRow(title, createdBy, cohortID).Scan(&taskTitle, &description, &dueDate, &taskType, &resourceURL)
+			if err != nil {
+				http.Error(w, "Task not found", http.StatusNotFound)
+				return
+			}
+
+			records = append(records, []string{taskTitle, description, dueDate, taskType, resourceURL})
+		}
+
+		filename := "task_export_selected_" + time.Now().Format("20060102") + ".csv"
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", "attachment; filename=\""+url.PathEscape(filename)+"\"")
+
+		csvWriter := csv.NewWriter(w)
+		defer csvWriter.Flush()
+
+		for _, record := range records {
+			if err := csvWriter.Write(record); err != nil {
+				log.Printf("Error writing CSV: %v", err)
+				return
+			}
+		}
+
+		return
+	}
+
 	// Get parameters
 	title := r.URL.Query().Get("title")
 	createdByStr := r.URL.Query().Get("created_by")
@@ -1710,7 +1784,7 @@ func exportGroupTaskHandler(w http.ResponseWriter, r *http.Request) {
 		safeTitle = safeTitle[:50]
 	}
 	filename := "task_export_" + safeTitle + ".csv"
-	
+
 	w.Header().Set("Content-Type", "text/csv")
 	// Properly escape the filename for RFC 6266 compliance
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+url.PathEscape(filename)+"\"")
@@ -2393,9 +2467,9 @@ func reorderTaskHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Parse the request body to get the task order
 	var requestData struct {
-		TaskID   int   `json:"taskId"`
-		Status   string `json:"status"`
-		TaskIDs  []int `json:"taskIds"` // New order of task IDs in the column
+		TaskID  int    `json:"taskId"`
+		Status  string `json:"status"`
+		TaskIDs []int  `json:"taskIds"` // New order of task IDs in the column
 	}
 
 	err = json.NewDecoder(r.Body).Decode(&requestData)
@@ -2410,12 +2484,12 @@ func reorderTaskHandler(w http.ResponseWriter, r *http.Request) {
 		err = db.QueryRow(`
 			SELECT owner_id FROM tasks WHERE id = ? AND status = ?
 		`, taskID, requestData.Status).Scan(&ownerID)
-		
+
 		if err != nil {
 			http.Error(w, "Task not found", http.StatusNotFound)
 			return
 		}
-		
+
 		if ownerID != user.ID {
 			http.Error(w, "Unauthorized", http.StatusForbidden)
 			return
@@ -2436,7 +2510,7 @@ func reorderTaskHandler(w http.ResponseWriter, r *http.Request) {
 			SET display_order = ?
 			WHERE id = ? AND owner_id = ?
 		`, i, taskID, user.ID)
-		
+
 		if err != nil {
 			http.Error(w, "Failed to update task order", http.StatusInternalServerError)
 			return
@@ -3560,7 +3634,7 @@ func getGroupNameByID(id int) string {
 // getTaskStatsForStudent calculates task statistics for a student
 func getTaskStatsForStudent(studentID int) (TaskStats, error) {
 	stats := TaskStats{}
-	
+
 	// Get counts for each status
 	rows, err := db.Query(`
 		SELECT status, COUNT(*) as count
@@ -3572,14 +3646,14 @@ func getTaskStatsForStudent(studentID int) (TaskStats, error) {
 		return stats, err
 	}
 	defer rows.Close()
-	
+
 	for rows.Next() {
 		var status string
 		var count int
 		if err := rows.Scan(&status, &count); err != nil {
 			return stats, err
 		}
-		
+
 		stats.Total += count
 		switch status {
 		case "pending":
@@ -3592,7 +3666,7 @@ func getTaskStatsForStudent(studentID int) (TaskStats, error) {
 			stats.Completed = count
 		}
 	}
-	
+
 	return stats, nil
 }
 
