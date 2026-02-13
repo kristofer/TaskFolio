@@ -1,14 +1,15 @@
 # TaskFolio - Getting Started Guide
 
-Welcome to TaskFolio! This guide will help you get started with the project, whether you're a new developer joining the team or a contributor.
+Welcome to TaskFolio! This guide will help you get started with the project, whether you're a new developer, student, or contributor.
 
 ## Table of Contents
 
 1. [Understanding the Project](#understanding-the-project)
-2. [Project Documentation](#project-documentation)
-3. [Next Steps](#next-steps)
-4. [Development Process](#development-process)
-5. [Quick Reference](#quick-reference)
+2. [Documentation Overview](#documentation-overview)
+3. [Quick Start](#quick-start)
+4. [Development Setup](#development-setup)
+5. [Learning Path](#learning-path)
+6. [Contributing](#contributing)
 
 ---
 
@@ -16,416 +17,367 @@ Welcome to TaskFolio! This guide will help you get started with the project, whe
 
 ### What is TaskFolio?
 
-TaskFolio is a student task management system designed for Zip Code Wilmington. It helps students:
-- Organize and track assignments and projects
-- Collaborate with classmates on team tasks
-- Monitor progress and productivity
-- Stay on top of deadlines
+TaskFolio (branded as "Tasking") is a web-based task management system built for Zip Code Wilmington coding bootcamp. It's designed as both a **functional application** and an **educational tool** for learning web development.
+
+**Current Features**:
+- User authentication with role-based access (students and instructors)
+- Task creation, editing, deletion, and status tracking
+- Cohort-based organization
+- Group collaboration support
+- Instructor task assignment capabilities
 
 ### Project Goals
 
-- **Simplicity**: Easy to use and intuitive interface
-- **Performance**: Fast response times and real-time updates
-- **Collaboration**: Seamless team work and communication
-- **Reliability**: Stable, secure, and available 24/7
+- **Educational Value**: Demonstrate real-world web development patterns in digestible format
+- **Simplicity**: Single-file architecture for easier understanding
+- **Completeness**: Full working application from database to UI
+- **Best Practices**: Show proper security, testing, and documentation
 
 ---
 
-## Project Documentation
+## Documentation Overview
 
-We have created comprehensive planning documents to guide the development of TaskFolio. Here's what each document contains:
+TaskFolio has comprehensive documentation for different audiences:
 
-### 📋 [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)
-**Your roadmap for building the app**
+### 📚 For Learners and Students
 
-This is the master plan divided into 7 phases:
-- Phase 1: Project Setup & Infrastructure
-- Phase 2: Core Backend Development
-- Phase 3: Frontend Development
-- Phase 4: Integration & Features
-- Phase 5: Testing & Quality Assurance
-- Phase 6: Deployment & Documentation
-- Phase 7: Post-Launch & Maintenance
+| Document | Purpose | Time Required |
+|----------|---------|---------------|
+| **[LEARNING_GUIDE.md](./LEARNING_GUIDE.md)** | Structured learning path with exercises | 40-60 hours total |
+| **[ARCHITECTURE.md](./ARCHITECTURE.md)** | Understand how the app is designed | 2-3 hours |
+| **[CODE_WALKTHROUGH.md](./CODE_WALKTHROUGH.md)** | Line-by-line code explanation | 8-12 hours |
 
-**When to use**: Start here for the big picture of what needs to be built and in what order.
+**Start here**: [LEARNING_GUIDE.md](./LEARNING_GUIDE.md)
 
-### 🗄️ [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md)
-**Complete database design**
+### 👨‍💻 For Developers
 
-Contains:
-- Entity Relationship Diagram (ERD)
-- All table definitions with SQL
-- Indexes and constraints
-- Common queries and optimizations
-- Migration strategy
+| Document | Purpose | When to Use |
+|----------|---------|-------------|
+| **[ARCHITECTURE.md](./ARCHITECTURE.md)** | System design and decisions | Before making changes |
+| **[CODE_WALKTHROUGH.md](./CODE_WALKTHROUGH.md)** | Understanding the code | Daily reference |
+| **[DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md)** | Database structure | Working with data |
+| **[TECHNICAL_REQUIREMENTS.md](./TECHNICAL_REQUIREMENTS.md)** | What the system does | Feature planning |
 
-**When to use**: Reference when implementing data models, writing queries, or creating migrations.
+**Start here**: [ARCHITECTURE.md](./ARCHITECTURE.md)
 
-### 🔌 [API_SPECIFICATION.md](./API_SPECIFICATION.md)
-**REST API documentation**
+### 🏫 For Instructors
 
-Includes:
-- All API endpoints (authentication, users, tasks, teams, etc.)
-- Request/response formats
-- Error handling
-- Authentication flows
-- WebSocket events
+| Document | Purpose | When to Use |
+|----------|---------|-------------|
+| **[LEARNING_GUIDE.md](./LEARNING_GUIDE.md)** | Exercises and projects for students | Teaching web dev |
+| **[ARCHITECTURE.md](./ARCHITECTURE.md)** | Concepts to teach | Lesson planning |
+| Demo accounts | Pre-configured users | Classroom demos |
 
-**When to use**: When implementing API endpoints or integrating frontend with backend.
+**Start here**: [LEARNING_GUIDE.md](./LEARNING_GUIDE.md)
 
-### 📁 [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md)
-**Code organization and conventions**
+### 🗂️ Planning Documents
 
-Covers:
-- Directory structure for backend (Go)
-- Directory structure for frontend (React/Vue)
-- File naming conventions
-- Design patterns to use
-- Environment variables
-- Build commands (Makefile)
+Original design documents are in **[docs/planning/](./docs/planning/)**:
+- Implementation plan for future features
+- Sprint planning templates
+- API specifications for RESTful architecture
+- Multi-package project structure recommendations
 
-**When to use**: When creating new files, organizing code, or understanding project layout.
+These represent the **vision** for future enhancements, not the current implementation.
 
-### 📝 [TECHNICAL_REQUIREMENTS.md](./TECHNICAL_REQUIREMENTS.md)
-**What the system must do and how well**
+---
 
-Details:
-- Functional requirements (features)
-- Non-functional requirements (performance, security, scalability)
-- Technical specifications
-- Constraints and assumptions
-- Success criteria
+## Quick Start
 
-**When to use**: Understanding requirements before implementing a feature or during code reviews.
+### Running the Application
 
-### 🗓️ [ROADMAP.md](./ROADMAP.md)
-**Timeline and milestones**
+**Prerequisites**: Go 1.16+, SQLite3
 
-Provides:
-- Visual timeline of development phases
-- Milestone definitions
-- Resource allocation
-- Risk mitigation plans
-- Success metrics for each phase
+```bash
+# Clone repository
+git clone https://github.com/kristofer/TaskFolio.git
+cd TaskFolio
 
-**When to use**: Planning sprints, tracking progress, or estimating timelines.
+# Install dependencies
+go mod download
 
-### 🏃 [SPRINT_PLANNING.md](./SPRINT_PLANNING.md)
-**Sprint planning template and example**
+# Run the application
+go run main.go
 
-Contains:
-- Sprint planning template
-- Example Sprint 1 with stories and tasks
-- Definition of Done
-- Sprint ceremonies
-- Team agreements
+# Open browser
+open http://localhost:8080
+```
 
-**When to use**: Planning sprints, breaking down stories, or running sprint ceremonies.
+### Demo Accounts
+
+| Username | Password | Role |
+|----------|----------|------|
+| `instructor1` | `password123` | Instructor |
+| `student1` | `password123` | Student |
+| `student2` | `password123` | Student |
+| `student3` | `password123` | Student |
+
+### With Docker
+
+```bash
+docker compose up -d
+open http://localhost:8080
+```
+
+See [DOCKER.md](./DOCKER.md) for production deployment.
+
+---
+
+## Development Setup
+
+### Prerequisites
+
+**Required**:
+- Go 1.16 or higher ([install](https://go.dev/doc/install))
+- SQLite3 (usually included with Go SQLite driver)
+- Git
+
+**Recommended**:
+- VS Code with Go extension
+- Docker Desktop (for deployment testing)
+- SQLite browser (for database inspection)
+
+### Initial Setup
+
+```bash
+# 1. Clone repository
+git clone https://github.com/kristofer/TaskFolio.git
+cd TaskFolio
+
+# 2. Install dependencies
+go mod download
+
+# 3. Run tests
+go test -v
+
+# 4. Run application
+go run main.go
+
+# 5. Verify it works
+curl http://localhost:8080/login
+```
+
+### Development Workflow
+
+```bash
+# Make code changes
+# Edit main.go or templates/
+
+# Run tests
+go test -v
+
+# Run application
+go run main.go
+
+# Test in browser
+open http://localhost:8080
+
+# Format code
+go fmt
+
+# Build binary
+go build -o tasking
+```
+
+### Project Structure
+
+```
+TaskFolio/
+├── main.go              # All application code (~3700 lines)
+├── main_test.go         # All tests (~1500 lines)
+├── templates/           # HTML templates
+│   ├── login.html
+│   ├── dashboard.html
+│   └── ...
+├── go.mod               # Dependencies
+├── taskfolio.db         # Database (created at runtime)
+├── Dockerfile
+├── docker-compose.yml
+└── docs/
+    └── planning/        # Future enhancement plans
+```
+
+**Why single file?** Educational choice - easier to understand complete flow. See [ARCHITECTURE.md](./ARCHITECTURE.md#single-file-architecture).
+
+---
+
+## Learning Path
+
+### For Complete Beginners (40-60 hours)
+
+**Week 1: Understand What It Does**
+1. Run the application
+2. Use it as a student and instructor
+3. Read [ARCHITECTURE.md](./ARCHITECTURE.md)
+4. Understand the high-level design
+
+**Week 2-3: Understand How It Works**
+1. Read [CODE_WALKTHROUGH.md](./CODE_WALKTHROUGH.md)
+2. Follow one request from browser to database
+3. Understand sessions and authentication
+4. Study the database schema
+
+**Week 4-6: Make Changes**
+1. Complete exercises in [LEARNING_GUIDE.md](./LEARNING_GUIDE.md)
+2. Add a simple field to tasks
+3. Create a new page
+4. Write tests for your changes
+
+**Week 7-8: Build Something**
+1. Build a related application
+2. Apply patterns you learned
+3. Share your work
+
+### For Experienced Developers (8-12 hours)
+
+**Day 1: Architecture**
+- Read [ARCHITECTURE.md](./ARCHITECTURE.md) (2 hours)
+- Understand design decisions and trade-offs
+
+**Day 2: Code**
+- Read [CODE_WALKTHROUGH.md](./CODE_WALKTHROUGH.md) (3 hours)
+- Trace request flows
+- Understand patterns
+
+**Day 3: Hands-On**
+- Make a small change (2 hours)
+- Write a test
+- Run the application
+
+**Day 4+: Extend**
+- Add a feature from your domain knowledge
+- Refactor something
+- Contribute back
+
+---
+
+## Contributing
+
+### Making Changes
+
+1. **Understand the code**: Read relevant documentation
+2. **Make minimal changes**: Follow existing patterns
+3. **Write tests**: Match existing test style
+4. **Run tests**: `go test -v`
+5. **Test manually**: Run the app and verify
+6. **Format code**: `go fmt`
+7. **Commit**: Clear commit message
+
+### Code Style
+
+- Follow existing Go conventions
+- Use `gofmt` for formatting
+- Add comments for complex logic
+- Write tests for new features
+- Keep functions focused
+
+### Testing
+
+```bash
+# Run all tests
+go test -v
+
+# Run specific test
+go test -run TestTaskCreation -v
+
+# With coverage
+go test -cover
+```
+
+See [TESTING.md](./TESTING.md) for details.
 
 ---
 
 ## Next Steps
+### Based on Your Role
 
-### For New Developers
+**Students/Learners**: 
+- Start with [LEARNING_GUIDE.md](./LEARNING_GUIDE.md)
+- Follow the structured learning path
+- Complete hands-on exercises
 
-If you're joining the TaskFolio project, here's what to do:
+**Developers**:
+- Read [ARCHITECTURE.md](./ARCHITECTURE.md) and [CODE_WALKTHROUGH.md](./CODE_WALKTHROUGH.md)
+- Set up development environment (above)
+- Make a small change to understand the workflow
 
-#### Week 1: Understanding
-1. ✅ Read this GETTING_STARTED.md guide
-2. ✅ Read the [README.md](./README.md) for project overview
-3. ✅ Review [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) - understand all phases
-4. ✅ Study [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md) - understand data model
-5. ✅ Review [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md) - understand code organization
-
-#### Week 1-2: Setup
-6. ⏳ Set up your development environment:
-   - Install Go 1.21+
-   - Install PostgreSQL 15+
-   - Install Node.js 18+
-   - Install Docker Desktop
-   - Set up your IDE (VS Code, GoLand, etc.)
-7. ⏳ Clone the repository
-8. ⏳ Get the project running locally
-9. ⏳ Run existing tests (once available)
-
-#### Week 2: First Contribution
-10. ⏳ Pick a small task from the current sprint
-11. ⏳ Create a feature branch
-12. ⏳ Implement the feature
-13. ⏳ Write tests
-14. ⏳ Submit a pull request
-15. ⏳ Participate in code review
-
-### For Project Leads
-
-If you're leading the project:
-
-1. ✅ Review all planning documents
-2. ⏳ Form the development team
-3. ⏳ Set up communication channels (Slack/Discord)
-4. ⏳ Schedule sprint planning meetings
-5. ⏳ Begin Phase 1 implementation
-6. ⏳ Track progress against the roadmap
-
-### For Contributors
-
-If you're contributing to TaskFolio:
-
-1. ✅ Read the [README.md](./README.md)
-2. ✅ Review [TECHNICAL_REQUIREMENTS.md](./TECHNICAL_REQUIREMENTS.md)
-3. ⏳ Look for issues labeled "good first issue"
-4. ⏳ Fork the repository
-5. ⏳ Make your changes
-6. ⏳ Submit a pull request
+**Instructors**:
+- Review [LEARNING_GUIDE.md](./LEARNING_GUIDE.md) for teaching materials
+- Use demo accounts in classroom
+- Assign exercises to students
 
 ---
 
-## Development Process
+## Resources
 
-### Agile Methodology
+### Documentation
+- [ARCHITECTURE.md](./ARCHITECTURE.md) - System design
+- [CODE_WALKTHROUGH.md](./CODE_WALKTHROUGH.md) - Code explanation
+- [LEARNING_GUIDE.md](./LEARNING_GUIDE.md) - Learning path
+- [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md) - Data model
+- [DOCKER.md](./DOCKER.md) - Deployment
+- [TESTING.md](./TESTING.md) - Testing guide
 
-We follow Agile/Scrum practices:
+### Learning Resources
 
-- **Sprint Duration**: 2 weeks
-- **Daily Standups**: 15 minutes, every day
-- **Sprint Planning**: 2 hours, start of sprint
-- **Sprint Review**: 1 hour, end of sprint
-- **Sprint Retrospective**: 1 hour, after review
-
-### Workflow
-
-```
-┌─────────────────┐
-│  Sprint Backlog │
-└────────┬────────┘
-         │
-         ↓
-┌─────────────────┐
-│  Create Branch  │
-│  feature/xyz    │
-└────────┬────────┘
-         │
-         ↓
-┌─────────────────┐
-│  Implement      │
-│  Feature        │
-└────────┬────────┘
-         │
-         ↓
-┌─────────────────┐
-│  Write Tests    │
-└────────┬────────┘
-         │
-         ↓
-┌─────────────────┐
-│  Code Review    │
-└────────┬────────┘
-         │
-         ↓
-┌─────────────────┐
-│  Merge to Main  │
-└────────┬────────┘
-         │
-         ↓
-┌─────────────────┐
-│  Deploy         │
-└─────────────────┘
-```
-
-### Git Workflow
-
-1. **Branch Naming**:
-   - Features: `feature/[story-number]-[description]`
-   - Bugs: `bugfix/[issue-number]-[description]`
-   - Hotfixes: `hotfix/[description]`
-
-2. **Commit Messages**:
-   ```
-   type(scope): subject
-
-   body
-
-   footer
-   ```
-   
-   Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
-
-3. **Pull Requests**:
-   - Link to the story/issue
-   - Describe what changed and why
-   - Add screenshots for UI changes
-   - Ensure CI passes
-   - Request review from team members
-
-### Code Review Guidelines
-
-**Reviewers should check**:
-- [ ] Code follows project conventions
-- [ ] Tests are included and passing
-- [ ] Documentation is updated
-- [ ] No security vulnerabilities
-- [ ] Performance is acceptable
-- [ ] Code is readable and maintainable
-
-**Review timeframe**: Within 24 hours
-
----
-
-## Quick Reference
-
-### Essential Commands (Once Project is Set Up)
-
-#### Backend (Go)
-```bash
-# Run the API server
-go run cmd/api/main.go
-
-# Run tests
-go test -v ./...
-
-# Run tests with coverage
-go test -v -cover ./...
-
-# Run linter
-golangci-lint run
-
-# Build
-go build -o bin/api cmd/api/main.go
-
-# Run migrations
-go run cmd/migrate/main.go up
-```
-
-#### Frontend
-```bash
-# Install dependencies
-npm install
-
-# Run dev server
-npm run dev
-
-# Build for production
-npm run build
-
-# Run tests
-npm test
-
-# Run E2E tests
-npm run test:e2e
-```
-
-#### Docker
-```bash
-# Start all services
-docker-compose up -d
-
-# Stop all services
-docker-compose down
-
-# View logs
-docker-compose logs -f
-
-# Rebuild containers
-docker-compose build
-```
-
-### Important Links
-
-- **Repository**: https://github.com/kristofer/TaskFolio
-- **Issue Tracker**: GitHub Issues
-- **Documentation**: This repository
-- **CI/CD**: GitHub Actions
-
-### Key Contacts
-
-- **Project Lead**: [To be assigned]
-- **Tech Lead**: [To be assigned]
-- **Backend Lead**: [To be assigned]
-- **Frontend Lead**: [To be assigned]
-
----
-
-## Learning Resources
-
-### Go Programming
-- [Official Go Documentation](https://go.dev/doc/)
-- [Effective Go](https://go.dev/doc/effective_go)
+**Go Programming**:
+- [Official Go Tour](https://go.dev/tour/)
 - [Go by Example](https://gobyexample.com/)
+- [Effective Go](https://go.dev/doc/effective_go)
 
-### PostgreSQL
-- [PostgreSQL Documentation](https://www.postgresql.org/docs/)
-- [PostgreSQL Tutorial](https://www.postgresqltutorial.com/)
+**Web Development**:
+- [MDN Web Docs](https://developer.mozilla.org/)
+- [HTTP Status Codes](https://httpstatuses.com/)
 
-### React (if chosen)
-- [React Documentation](https://react.dev/)
-- [React Tutorial](https://react.dev/learn)
+**Database**:
+- [SQLite Tutorial](https://www.sqlitetutorial.net/)
+- [SQL Style Guide](https://www.sqlstyle.guide/)
 
-### Vue.js (if chosen)
-- [Vue.js Documentation](https://vuejs.org/)
-- [Vue.js Guide](https://vuejs.org/guide/)
-
-### Docker
-- [Docker Documentation](https://docs.docker.com/)
-- [Docker Getting Started](https://docs.docker.com/get-started/)
+**Security**:
+- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
+- [Web Security Academy](https://portswigger.net/web-security)
 
 ---
 
-## Frequently Asked Questions
+## Quick Commands Reference
 
-### Q: Where do I start?
-**A**: Read the README.md and IMPLEMENTATION_PLAN.md first. Then set up your development environment and look for a task in the current sprint.
+```bash
+# Development
+go run main.go              # Run application
+go test -v                  # Run tests
+go fmt                      # Format code
+go build -o tasking         # Build binary
 
-### Q: How do I know what to work on?
-**A**: Check the sprint backlog in the project management tool or GitHub Issues. Look for unassigned tasks or ask the tech lead.
+# Docker
+docker compose up -d        # Start with Docker
+docker compose down         # Stop containers
+docker compose logs -f      # View logs
 
-### Q: What if I find a bug?
-**A**: Create an issue in GitHub with details about how to reproduce it. If it's critical, notify the team immediately.
-
-### Q: How do I ask for help?
-**A**: Post in the team chat channel or ask during daily standup. Don't hesitate - we're all here to help!
-
-### Q: Can I suggest a new feature?
-**A**: Absolutely! Create a feature request issue or bring it up during sprint planning.
-
-### Q: How often should I commit code?
-**A**: Commit frequently (multiple times per day). Each commit should be a logical unit of work.
-
-### Q: When should I create a pull request?
-**A**: Create a PR when your feature is complete, tested, and ready for review. Don't wait too long!
-
-### Q: How do I handle merge conflicts?
-**A**: Pull the latest changes from main, resolve conflicts locally, test thoroughly, then push again.
+# Database
+sqlite3 taskfolio.db        # Open database
+.schema users               # View table schema
+SELECT * FROM users;        # Query data
+```
 
 ---
 
-## Tips for Success
+## Getting Help
 
-1. **Communicate Early and Often**: Don't wait until you're stuck. Ask questions!
-
-2. **Read the Code**: The best way to learn the codebase is to read it. Start with simple files and work your way up.
-
-3. **Write Tests**: Don't skip tests. They save time in the long run and give you confidence in your code.
-
-4. **Keep PRs Small**: Smaller PRs are easier to review and less likely to have issues.
-
-5. **Document as You Go**: Update documentation when you change things. Future you (and others) will thank you.
-
-6. **Follow Conventions**: Consistency makes the codebase easier to navigate and maintain.
-
-7. **Learn from Reviews**: Code reviews are learning opportunities, not criticisms.
-
-8. **Stay Updated**: Pull from main regularly to avoid conflicts and stay current with the latest changes.
+- **Documentation**: Check the relevant .md files above
+- **Code Questions**: See [CODE_WALKTHROUGH.md](./CODE_WALKTHROUGH.md)
+- **Learning**: See [LEARNING_GUIDE.md](./LEARNING_GUIDE.md)
+- **Issues**: Open a GitHub issue
 
 ---
 
-## Welcome to the Team!
+## Welcome!
 
-We're excited to have you working on TaskFolio! This is a collaborative project, and every contribution matters. Don't hesitate to ask questions, suggest improvements, or share ideas.
+Whether you're learning web development, contributing code, or using this for teaching, we're glad you're here. TaskFolio is designed to be both useful and educational.
 
-Let's build something great together! 🚀
+**Get started**: Pick your path above and dive in! 🚀
 
 ---
 
-**Last Updated**: October 16, 2025  
-**Version**: 1.0  
-**Maintained by**: TaskFolio Team
+**Last Updated**: February 2026  
+**Version**: 2.0  
+**Status**: Active educational project
