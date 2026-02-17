@@ -5169,17 +5169,17 @@ t.Fatalf("Failed to query students: %v", err)
 defer rows.Close()
 
 var students []struct {
-id       int
-username string
-cohort   string
+ID       int
+Username string
+Cohort   string
 }
 for rows.Next() {
 var s struct {
-id       int
-username string
-cohort   string
+ID       int
+Username string
+Cohort   string
 }
-rows.Scan(&s.id, &s.username, &s.cohort)
+rows.Scan(&s.ID, &s.Username, &s.Cohort)
 students = append(students, s)
 }
 
@@ -5190,10 +5190,10 @@ t.Errorf("Expected 2 current students, got %d", len(students))
 
 // Verify past student is not included
 for _, student := range students {
-if student.username == "past_student1" {
+if student.Username == "past_student1" {
 t.Errorf("Past student 'past_student1' should not be included")
 }
-if student.id == 3 {
+if student.ID == 3 {
 t.Errorf("Past student (ID 3) should not be included")
 }
 }
@@ -5204,8 +5204,8 @@ expectedUsernames := map[string]bool{
 "current_student2": false,
 }
 for _, student := range students {
-if _, ok := expectedUsernames[student.username]; ok {
-expectedUsernames[student.username] = true
+if _, ok := expectedUsernames[student.Username]; ok {
+expectedUsernames[student.Username] = true
 }
 }
 for username, found := range expectedUsernames {

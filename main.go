@@ -2571,11 +2571,7 @@ func importTasksHandler(w http.ResponseWriter, r *http.Request) {
 	var targetStudentIDs []int
 	switch assignType {
 	case "all":
-		// When "All Students" is selected, the frontend pre-selects all current students
-		// in a multi-select picker, allowing the instructor to deselect specific students
-		// using Ctrl/Cmd-click. This provides flexibility to exclude certain students from
-		// the bulk import while still using the "All Students" convenience.
-		// Read the selected student IDs from the form.
+		// "All Students" mode: Frontend pre-selects all current students; instructor can deselect via Ctrl/Cmd-click
 		studentIDs := r.Form["students"]
 		if len(studentIDs) == 0 {
 			http.Error(w, "Please select at least one student", http.StatusBadRequest)
