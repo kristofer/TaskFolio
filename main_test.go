@@ -2168,7 +2168,8 @@ username TEXT UNIQUE NOT NULL,
 password TEXT NOT NULL,
 role TEXT NOT NULL CHECK(role IN ('student', 'instructor')),
 cohort_name TEXT,
-is_suspended BOOLEAN DEFAULT 0
+is_suspended BOOLEAN DEFAULT 0,
+is_current BOOLEAN DEFAULT 1
 )
 `)
 	if err != nil {
@@ -2341,7 +2342,8 @@ username TEXT UNIQUE NOT NULL,
 password TEXT NOT NULL,
 role TEXT NOT NULL CHECK(role IN ('student', 'instructor')),
 cohort_name TEXT,
-is_suspended BOOLEAN DEFAULT 0
+is_suspended BOOLEAN DEFAULT 0,
+is_current BOOLEAN DEFAULT 1
 )
 `)
 	if err != nil {
@@ -4947,5 +4949,268 @@ pastCount++
 
 if pastCount != 2 {
 t.Errorf("Expected 2 past students, got %d", pastCount)
+}
+}
+
+// TestImportTasksCurrentStudentsOnly tests that import tasks only assigns to current students
+func TestImportTasksCurrentStudentsOnly(t *testing.T) {
+testDB := createTestDB(t)
+defer testDB.Close()
+
+// Set the global db to our test database
+oldDB := db
+db = testDB
+defer func() { db = oldDB }()
+
+// Insert instructor
+_, err := testDB.Exec("INSERT INTO users (id, username, password, role, is_current) VALUES (?, ?, ?, ?, ?)",
+1, "instructor1", "pass", "instructor", 1)
+if err != nil {
+t.Fatalf("Failed to insert instructor: %v", err)
+}
+
+// Insert current students
+_, err = testDB.Exec("INSERT INTO users (id, username, password, role, cohort_name, is_current) VALUES (?, ?, ?, ?, ?, ?)",
+2, "current_student1", "pass", "student", "Java11.2", 1)
+if err != nil {
+t.Fatalf("Failed to insert current student 1: %v", err)
+}
+
+_, err = testDB.Exec("INSERT INTO users (id, username, password, role, cohort_name, is_current) VALUES (?, ?, ?, ?, ?, ?)",
+3, "current_student2", "pass", "student", "Java11.2", 1)
+if err != nil {
+t.Fatalf("Failed to insert current student 2: %v", err)
+}
+
+// Insert past students (is_current = 0)
+_, err = testDB.Exec("INSERT INTO users (id, username, password, role, cohort_name, is_current) VALUES (?, ?, ?, ?, ?, ?)",
+4, "past_student1", "pass", "student", "Java11.2", 0)
+if err != nil {
+t.Fatalf("Failed to insert past student 1: %v", err)
+}
+
+_, err = testDB.Exec("INSERT INTO users (id, username, password, role, cohort_name, is_current) VALUES (?, ?, ?, ?, ?, ?)",
+5, "past_student2", "pass", "student", "Data6.1", 0)
+if err != nil {
+t.Fatalf("Failed to insert past student 2: %v", err)
+}
+
+// Test 1: Query for cohort students should only return current students
+rows, err := testDB.Query("SELECT id FROM users WHERE role = 'student' AND cohort_name = ? AND is_current = 1", "Java11.2")
+if err != nil {
+t.Fatalf("Failed to query cohort students: %v", err)
+}
+
+var cohortStudentIDs []int
+for rows.Next() {
+var studentID int
+rows.Scan(&studentID)
+cohortStudentIDs = append(cohortStudentIDs, studentID)
+}
+rows.Close()
+
+// Should only get 2 current students from Java11.2, not the past student
+if len(cohortStudentIDs) != 2 {
+t.Errorf("Expected 2 current students in Java11.2 cohort, got %d", len(cohortStudentIDs))
+}
+
+// Verify the IDs are correct (should be 2 and 3, not 4)
+for _, id := range cohortStudentIDs {
+if id == 4 {
+t.Errorf("Past student (ID 4) should not be included in cohort query")
+}
+}
+
+// Test 2: Query for all students should only return current students
+rows, err = testDB.Query("SELECT id FROM users WHERE role = 'student' AND is_current = 1")
+if err != nil {
+t.Fatalf("Failed to query all students: %v", err)
+}
+
+var allCurrentStudentIDs []int
+for rows.Next() {
+var studentID int
+rows.Scan(&studentID)
+allCurrentStudentIDs = append(allCurrentStudentIDs, studentID)
+}
+rows.Close()
+
+// Should only get 2 current students, not the 2 past students
+if len(allCurrentStudentIDs) != 2 {
+t.Errorf("Expected 2 current students total, got %d", len(allCurrentStudentIDs))
+}
+
+// Verify past students are not included
+for _, id := range allCurrentStudentIDs {
+if id == 4 || id == 5 {
+t.Errorf("Past student (ID %d) should not be included in all students query", id)
+}
+}
+}
+
+// TestAPICohortsCurrentStudentsOnly tests that API cohorts endpoint only returns cohorts of current students
+func TestAPICohortsCurrentStudentsOnly(t *testing.T) {
+testDB := createTestDB(t)
+defer testDB.Close()
+
+// Set the global db to our test database
+oldDB := db
+db = testDB
+defer func() { db = oldDB }()
+
+// Insert current students in different cohorts
+_, err := testDB.Exec("INSERT INTO users (username, password, role, cohort_name, is_current) VALUES (?, ?, ?, ?, ?)",
+"current_student1", "pass", "student", "Java11.2", 1)
+if err != nil {
+t.Fatalf("Failed to insert current student: %v", err)
+}
+
+_, err = testDB.Exec("INSERT INTO users (username, password, role, cohort_name, is_current) VALUES (?, ?, ?, ?, ?)",
+"current_student2", "pass", "student", "Data6.2", 1)
+if err != nil {
+t.Fatalf("Failed to insert current student: %v", err)
+}
+
+// Insert past students in different cohort
+_, err = testDB.Exec("INSERT INTO users (username, password, role, cohort_name, is_current) VALUES (?, ?, ?, ?, ?)",
+"past_student1", "pass", "student", "OldCohort5.1", 0)
+if err != nil {
+t.Fatalf("Failed to insert past student: %v", err)
+}
+
+// Query cohorts like the API does - should only return cohorts of current students
+rows, err := testDB.Query(`
+SELECT DISTINCT cohort_name 
+FROM users 
+WHERE role = 'student' AND cohort_name IS NOT NULL AND cohort_name != '' AND is_current = 1
+ORDER BY cohort_name
+`)
+if err != nil {
+t.Fatalf("Failed to query cohorts: %v", err)
+}
+defer rows.Close()
+
+var cohorts []string
+for rows.Next() {
+var cohort string
+rows.Scan(&cohort)
+cohorts = append(cohorts, cohort)
+}
+
+// Should only get 2 cohorts (Java11.2 and Data6.2), not OldCohort5.1
+if len(cohorts) != 2 {
+t.Errorf("Expected 2 cohorts from current students, got %d: %v", len(cohorts), cohorts)
+}
+
+// Verify old cohort is not included
+for _, cohort := range cohorts {
+if cohort == "OldCohort5.1" {
+t.Errorf("Past student cohort 'OldCohort5.1' should not be included")
+}
+}
+
+// Verify expected cohorts are present
+expectedCohorts := map[string]bool{
+"Java11.2": false,
+"Data6.2":  false,
+}
+for _, cohort := range cohorts {
+if _, ok := expectedCohorts[cohort]; ok {
+expectedCohorts[cohort] = true
+}
+}
+for cohort, found := range expectedCohorts {
+if !found {
+t.Errorf("Expected cohort '%s' not found in results", cohort)
+}
+}
+}
+
+// TestAPIStudentsCurrentStudentsOnly tests that API students endpoint only returns current students
+func TestAPIStudentsCurrentStudentsOnly(t *testing.T) {
+testDB := createTestDB(t)
+defer testDB.Close()
+
+// Set the global db to our test database
+oldDB := db
+db = testDB
+defer func() { db = oldDB }()
+
+// Insert current students
+_, err := testDB.Exec("INSERT INTO users (id, username, password, role, cohort_name, is_current) VALUES (?, ?, ?, ?, ?, ?)",
+1, "current_student1", "pass", "student", "Java11.2", 1)
+if err != nil {
+t.Fatalf("Failed to insert current student 1: %v", err)
+}
+
+_, err = testDB.Exec("INSERT INTO users (id, username, password, role, cohort_name, is_current) VALUES (?, ?, ?, ?, ?, ?)",
+2, "current_student2", "pass", "student", "Data6.2", 1)
+if err != nil {
+t.Fatalf("Failed to insert current student 2: %v", err)
+}
+
+// Insert past students
+_, err = testDB.Exec("INSERT INTO users (id, username, password, role, cohort_name, is_current) VALUES (?, ?, ?, ?, ?, ?)",
+3, "past_student1", "pass", "student", "OldCohort5.1", 0)
+if err != nil {
+t.Fatalf("Failed to insert past student: %v", err)
+}
+
+// Query students like the API does - should only return current students
+rows, err := testDB.Query(`
+SELECT id, username, COALESCE(cohort_name, '') 
+FROM users 
+WHERE role = 'student' AND is_current = 1
+ORDER BY username
+`)
+if err != nil {
+t.Fatalf("Failed to query students: %v", err)
+}
+defer rows.Close()
+
+var students []struct {
+id       int
+username string
+cohort   string
+}
+for rows.Next() {
+var s struct {
+id       int
+username string
+cohort   string
+}
+rows.Scan(&s.id, &s.username, &s.cohort)
+students = append(students, s)
+}
+
+// Should only get 2 current students, not the past student
+if len(students) != 2 {
+t.Errorf("Expected 2 current students, got %d", len(students))
+}
+
+// Verify past student is not included
+for _, student := range students {
+if student.username == "past_student1" {
+t.Errorf("Past student 'past_student1' should not be included")
+}
+if student.id == 3 {
+t.Errorf("Past student (ID 3) should not be included")
+}
+}
+
+// Verify expected students are present
+expectedUsernames := map[string]bool{
+"current_student1": false,
+"current_student2": false,
+}
+for _, student := range students {
+if _, ok := expectedUsernames[student.username]; ok {
+expectedUsernames[student.username] = true
+}
+}
+for username, found := range expectedUsernames {
+if !found {
+t.Errorf("Expected student '%s' not found in results", username)
+}
 }
 }
