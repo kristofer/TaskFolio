@@ -994,3 +994,239 @@ Key points from this walkthrough:
 - Try modifying code and running tests
 - Add a new feature following these patterns
 
+
+---
+
+## Import Tasks Feature
+
+### Overview
+
+The Import Tasks feature allows instructors to bulk-import tasks from a CSV file and assign them to students. This feature demonstrates several important concepts:
+
+1. **File upload handling** - Multipart form parsing
+2. **CSV parsing** - Reading and validating CSV data
+3. **Current student filtering** - Ensuring only active students receive tasks
+4. **Flexible assignment** - Supporting multiple assignment modes
+
+### CSV Format
+
+The import expects a CSV file with 5 fields per line:
+```
+Task Title, Description, DueDate, TaskType, ResourceURL
+```
+
+Example:
+```csv
+Complete Lab 1, Finish the Java basics lab, 2025-11-15, individual-programming-lab, https://example.com/lab1
+Read Chapter 5, Read about design patterns, 2025-11-10, reading, https://example.com/chapter5
+```
+
+### Import Task Handler
+
+Location: `importTasksHandler()` in `main.go` (around line 2531)
+
+Key steps:
+
+1. **Authentication Check**: Only instructors can import tasks
+2. **Parse Multipart Form**: Handle CSV file upload
+3. **Determine Assignment Type**: Three modes supported
+4. **Read and Parse CSV**: Validate and process each task
+5. **Create Tasks**: Insert into database for each target student
+
+### Assignment Modes
+
+#### 1. All Students (with selection)
+When "All Students" is selected:
+- Frontend loads all current students via `/api/students`
+- All current students are **pre-selected** in the student picker
+- Instructor can deselect specific students using Ctrl/Cmd-click
+- Backend reads selected student IDs from form data
+
+```javascript
+// Frontend: Load students with pre-selection
+function loadStudents(selectAll) {
+    fetch('/api/students')
+        .then(response => response.json())
+        .then(students => {
+            const select = document.getElementById('studentSelect');
+            select.innerHTML = '';
+            students.forEach(student => {
+                const option = document.createElement('option');
+                option.value = student.id;
+                option.textContent = student.username + (student.cohort ? ' (' + student.cohort + ')' : '');
+                // Pre-select when "All Students" is chosen
+                if (selectAll) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            });
+        });
+}
+```
+
+Backend handling:
+```go
+case "all":
+    // When "All Students" is selected, read the selected student IDs from the form
+    // This allows instructors to deselect specific students
+    studentIDs := r.Form["students"]
+    if len(studentIDs) == 0 {
+        http.Error(w, "Please select at least one student", http.StatusBadRequest)
+        return
+    }
+    for _, idStr := range studentIDs {
+        id, err := strconv.Atoi(idStr)
+        if err == nil {
+            targetStudentIDs = append(targetStudentIDs, id)
+        }
+    }
+```
+
+#### 2. Specific Cohort
+- Shows only cohorts of current students
+- Queries: `SELECT DISTINCT cohort_name FROM users WHERE role = 'student' AND is_current = 1`
+- Assigns to all current students in selected cohort
+
+```go
+case "cohort":
+    cohortName := r.FormValue("cohort")
+    if cohortName == "" {
+        http.Error(w, "Please select a cohort", http.StatusBadRequest)
+        return
+    }
+    // Only current students in the cohort
+    rows, err := db.Query("SELECT id FROM users WHERE role = 'student' AND cohort_name = ? AND is_current = 1", cohortName)
+    // ... process rows
+```
+
+#### 3. Specific Students
+- Shows only current students
+- Instructor selects individual students from the list
+
+### Current Students Filtering
+
+**Critical Design Decision**: The system only shows and assigns tasks to **current students** (where `is_current = 1`).
+
+This is implemented in three key places:
+
+1. **API Students Endpoint** (`/api/students`):
+```go
+rows, err := db.Query(`
+    SELECT id, username, COALESCE(cohort_name, '') 
+    FROM users 
+    WHERE role = 'student' AND is_current = 1
+    ORDER BY username
+`)
+```
+
+2. **API Cohorts Endpoint** (`/api/cohorts`):
+```go
+rows, err := db.Query(`
+    SELECT DISTINCT cohort_name 
+    FROM users 
+    WHERE role = 'student' AND cohort_name IS NOT NULL AND cohort_name != '' AND is_current = 1
+    ORDER BY cohort_name
+`)
+```
+
+3. **Import Task Handler** - All assignment modes filter by `is_current = 1`
+
+### Why Filter Current Students?
+
+Past students should not receive new task assignments. The `is_current` field allows the system to:
+- Maintain historical student records
+- Track past cohorts
+- Prevent accidental task assignment to alumni
+- Keep student lists clean and relevant
+
+### User Experience Flow
+
+1. Instructor clicks "Import Tasks" button
+2. Form appears with CSV upload and assignment options
+3. Instructor selects assignment type:
+   - **All Students**: Student picker appears with all current students selected
+   - **Specific Cohort**: Cohort dropdown appears (only current cohorts)
+   - **Specific Students**: Student picker appears (only current students)
+4. Instructor can deselect students in "All Students" mode using Ctrl/Cmd-click
+5. On submit, tasks are created for each selected student
+
+### Frontend Implementation
+
+Key JavaScript functions (in `templates/home.html`):
+
+- `updateAssignOptions()`: Shows/hides appropriate selection controls
+- `loadCohorts()`: Fetches and populates cohort dropdown
+- `loadStudents(selectAll)`: Fetches and populates student picker, with optional pre-selection
+
+### Error Handling
+
+The import handler validates:
+- CSV format (5 fields expected)
+- Task type validity
+- At least one student selected
+- File upload success
+
+Errors are collected and returned to the user with line numbers for debugging.
+
+### Testing
+
+Tests for Import Tasks functionality:
+
+1. **TestImportTasksCurrentStudentsOnly**: Verifies queries filter current students
+2. **TestAPICohortsCurrentStudentsOnly**: Verifies cohorts API returns only current cohorts
+3. **TestAPIStudentsCurrentStudentsOnly**: Verifies students API returns only current students
+4. **TestImportTasks**: Original import functionality test
+5. **TestImportTasksToAllStudents**: Tests bulk assignment
+6. **TestImportTasksToSpecificStudents**: Tests selective assignment
+
+### Code Navigation Guide
+
+For future agents working on Import Tasks:
+
+1. **Backend Handler**: Line ~2531 in `main.go` - `importTasksHandler()`
+2. **API Endpoints**: 
+   - Students: Line ~2820 - `apiStudentsHandler()`
+   - Cohorts: Line ~2781 - `apiCohortsHandler()`
+3. **Frontend Form**: `templates/home.html` lines 449-495
+4. **Frontend JavaScript**: `templates/home.html` lines 1282-1347
+5. **Tests**: `main_test.go` - search for "TestImport"
+
+### Database Schema
+
+Relevant tables and fields:
+
+**users table**:
+- `is_current`: BOOLEAN (1 for current students, 0 for past)
+- `cohort_name`: TEXT (e.g., "Java11.2", "Data6.2")
+- `role`: TEXT ('student' or 'instructor')
+
+**tasks table**:
+- `owner_id`: Links to user who owns the task
+- `created_by`: Links to instructor who created it
+- `cohort_id`: Optional cohort name for cohort-based assignments
+
+### Modification Guidelines
+
+When modifying Import Tasks:
+
+1. **Always filter by `is_current = 1`** when querying students or cohorts
+2. **Test with both current and past students** to verify filtering
+3. **Update tests** when changing import logic
+4. **Maintain backward compatibility** with existing CSV format
+5. **Preserve the three assignment modes** unless explicitly changing the UX
+
+### Common Issues and Solutions
+
+**Issue**: Past students appearing in selection
+- **Check**: API endpoints include `AND is_current = 1` filter
+- **Check**: Frontend doesn't bypass the API filtering
+
+**Issue**: "All Students" not pre-selecting students
+- **Check**: `updateAssignOptions()` calls `loadStudents(true)` for 'all' case
+- **Check**: `loadStudents()` sets `option.selected = true` when `selectAll` is true
+
+**Issue**: Import fails with "No students found"
+- **Check**: At least one current student exists
+- **Check**: Assignment type is correctly set in form data
+- **Check**: Student IDs are being parsed correctly from form
+

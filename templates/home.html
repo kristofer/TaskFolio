@@ -1293,7 +1293,11 @@
                 loadCohorts();
             } else if (assignType === 'students') {
                 studentDiv.style.display = 'block';
-                loadStudents();
+                loadStudents(false); // Load students without pre-selection
+            } else if (assignType === 'all') {
+                // Show student picker with all students pre-selected
+                studentDiv.style.display = 'block';
+                loadStudents(true); // Load students with pre-selection
             }
         }
         
@@ -1316,7 +1320,7 @@
                 });
         }
         
-        function loadStudents() {
+        function loadStudents(selectAll) {
             fetch('/api/students')
                 .then(response => response.json())
                 .then(students => {
@@ -1326,6 +1330,10 @@
                         const option = document.createElement('option');
                         option.value = student.id;
                         option.textContent = student.username + (student.cohort ? ' (' + student.cohort + ')' : '');
+                        // Pre-select all students when "All Students" is chosen
+                        if (selectAll) {
+                            option.selected = true;
+                        }
                         select.appendChild(option);
                     });
                 })
