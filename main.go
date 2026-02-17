@@ -2567,11 +2567,14 @@ func importTasksHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get target student IDs based on assignment type
+	// IMPORTANT: All modes filter by is_current = 1 to prevent assignment to past students
 	var targetStudentIDs []int
 	switch assignType {
 	case "all":
 		// When "All Students" is selected, the frontend pre-selects all current students
-		// but allows the instructor to deselect specific students.
+		// in a multi-select picker, allowing the instructor to deselect specific students
+		// using Ctrl/Cmd-click. This provides flexibility to exclude certain students from
+		// the bulk import while still using the "All Students" convenience.
 		// Read the selected student IDs from the form.
 		studentIDs := r.Form["students"]
 		if len(studentIDs) == 0 {
@@ -2590,6 +2593,7 @@ func importTasksHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Please select a cohort", http.StatusBadRequest)
 			return
 		}
+		// Query only current students in the cohort
 		rows, err := db.Query("SELECT id FROM users WHERE role = 'student' AND cohort_name = ? AND is_current = 1", cohortName)
 		if err != nil {
 			http.Error(w, "Failed to query cohort students", http.StatusInternalServerError)
@@ -2602,7 +2606,7 @@ func importTasksHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		rows.Close()
 	case "students":
-		// Form data already parsed by ParseMultipartForm above
+		// Specific students mode - form data already parsed by ParseMultipartForm above
 		studentIDs := r.Form["students"]
 		if len(studentIDs) == 0 {
 			http.Error(w, "Please select at least one student", http.StatusBadRequest)
@@ -2780,7 +2784,9 @@ func importTasksHandler(w http.ResponseWriter, r *http.Request) {
 </html>`)
 }
 
-// apiCohortsHandler returns list of unique cohorts as JSON
+// apiCohortsHandler returns list of unique cohorts as JSON.
+// IMPORTANT: Only returns cohorts of CURRENT students (is_current = 1).
+// This ensures import tasks functionality only shows active cohorts.
 func apiCohortsHandler(w http.ResponseWriter, r *http.Request) {
 	session, err := getSession(r)
 	if err != nil {
@@ -2794,6 +2800,7 @@ func apiCohortsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Query only cohorts from current students to prevent assignment to past students
 	rows, err := db.Query(`
 		SELECT DISTINCT cohort_name 
 		FROM users 
@@ -2819,7 +2826,9 @@ func apiCohortsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// apiStudentsHandler returns list of students as JSON
+// apiStudentsHandler returns list of students as JSON.
+// IMPORTANT: Only returns CURRENT students (is_current = 1).
+// This ensures import tasks functionality only shows active students.
 func apiStudentsHandler(w http.ResponseWriter, r *http.Request) {
 	session, err := getSession(r)
 	if err != nil {
@@ -2833,6 +2842,7 @@ func apiStudentsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Query only current students to prevent assignment to past students
 	rows, err := db.Query(`
 		SELECT id, username, COALESCE(cohort_name, '') 
 		FROM users 
