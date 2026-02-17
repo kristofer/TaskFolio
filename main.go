@@ -2570,24 +2570,27 @@ func importTasksHandler(w http.ResponseWriter, r *http.Request) {
 	var targetStudentIDs []int
 	switch assignType {
 	case "all":
-		rows, err := db.Query("SELECT id FROM users WHERE role = 'student'")
-		if err != nil {
-			http.Error(w, "Failed to query students", http.StatusInternalServerError)
+		// When "All Students" is selected, the frontend pre-selects all current students
+		// but allows the instructor to deselect specific students.
+		// Read the selected student IDs from the form.
+		studentIDs := r.Form["students"]
+		if len(studentIDs) == 0 {
+			http.Error(w, "Please select at least one student", http.StatusBadRequest)
 			return
 		}
-		for rows.Next() {
-			var studentID int
-			rows.Scan(&studentID)
-			targetStudentIDs = append(targetStudentIDs, studentID)
+		for _, idStr := range studentIDs {
+			id, err := strconv.Atoi(idStr)
+			if err == nil {
+				targetStudentIDs = append(targetStudentIDs, id)
+			}
 		}
-		rows.Close()
 	case "cohort":
 		cohortName := r.FormValue("cohort")
 		if cohortName == "" {
 			http.Error(w, "Please select a cohort", http.StatusBadRequest)
 			return
 		}
-		rows, err := db.Query("SELECT id FROM users WHERE role = 'student' AND cohort_name = ?", cohortName)
+		rows, err := db.Query("SELECT id FROM users WHERE role = 'student' AND cohort_name = ? AND is_current = 1", cohortName)
 		if err != nil {
 			http.Error(w, "Failed to query cohort students", http.StatusInternalServerError)
 			return
@@ -2794,7 +2797,7 @@ func apiCohortsHandler(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Query(`
 		SELECT DISTINCT cohort_name 
 		FROM users 
-		WHERE role = 'student' AND cohort_name IS NOT NULL AND cohort_name != '' 
+		WHERE role = 'student' AND cohort_name IS NOT NULL AND cohort_name != '' AND is_current = 1
 		ORDER BY cohort_name
 	`)
 	if err != nil {
@@ -2833,7 +2836,7 @@ func apiStudentsHandler(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Query(`
 		SELECT id, username, COALESCE(cohort_name, '') 
 		FROM users 
-		WHERE role = 'student' 
+		WHERE role = 'student' AND is_current = 1
 		ORDER BY username
 	`)
 	if err != nil {
