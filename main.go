@@ -2775,13 +2775,18 @@ func assignTaskTemplateHandler(w http.ResponseWriter, r *http.Request) {
 	templateID := r.FormValue("template_id")
 	dueDate := r.FormValue("due_date")
 	studentIDs := r.Form["student_ids"]
+	
+	// Get edited values from form (these may be different from template values)
+	title := r.FormValue("title")
+	description := r.FormValue("description")
+	resourceURL := r.FormValue("resource_url")
 
 	if templateID == "" || len(studentIDs) == 0 {
 		http.Error(w, "Template ID and student IDs are required", http.StatusBadRequest)
 		return
 	}
 
-	// Get the template
+	// Get the template to retrieve task_type (which is not editable in the modal)
 	var template TaskTemplate
 	err = db.QueryRow(`
 		SELECT id, title, COALESCE(description, ''), COALESCE(task_type, ''), COALESCE(resource_url, '')
@@ -2791,6 +2796,17 @@ func assignTaskTemplateHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Template not found", http.StatusNotFound)
 		return
+	}
+	
+	// Use edited values if provided, otherwise fall back to template values
+	if title == "" {
+		title = template.Title
+	}
+	if description == "" {
+		description = template.Description
+	}
+	if resourceURL == "" {
+		resourceURL = template.ResourceURL
 	}
 
 	// Create tasks for each student
@@ -2804,7 +2820,7 @@ func assignTaskTemplateHandler(w http.ResponseWriter, r *http.Request) {
 		_, err = db.Exec(`
 			INSERT INTO tasks (title, description, due_date, status, owner_id, created_by, task_type, resource_url)
 			VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)
-		`, template.Title, template.Description, dueDate, studentID, user.ID, template.TaskType, template.ResourceURL)
+		`, title, description, dueDate, studentID, user.ID, template.TaskType, resourceURL)
 
 		if err == nil {
 			tasksCreated++
