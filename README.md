@@ -14,6 +14,7 @@ A multi-tenant web-based task management system for Zip Code Wilmington coding b
 
 | Document | Purpose | Audience |
 |----------|---------|----------|
+| **[STUDENT_MANUAL.md](./STUDENT_MANUAL.md)** | Complete user guide for students | Bootcamp students |
 | **[ARCHITECTURE.md](./ARCHITECTURE.md)** | Understand the system design and architecture | Developers, Architects |
 | **[CODE_WALKTHROUGH.md](./CODE_WALKTHROUGH.md)** | Step-by-step code explanation | Developers |
 | **[LEARNING_GUIDE.md](./LEARNING_GUIDE.md)** | Pedagogical guide with exercises | Students, Learners |
@@ -134,9 +135,10 @@ TaskFolio/
 
 TaskFolio is designed to be a learning tool. Start with:
 
-1. **[LEARNING_GUIDE.md](./LEARNING_GUIDE.md)** - Structured learning path with exercises
-2. **[ARCHITECTURE.md](./ARCHITECTURE.md)** - Understand how it's built
-3. **[CODE_WALKTHROUGH.md](./CODE_WALKTHROUGH.md)** - Line-by-line code explanation
+1. **[STUDENT_MANUAL.md](./STUDENT_MANUAL.md)** - Complete user guide for using Tasking
+2. **[LEARNING_GUIDE.md](./LEARNING_GUIDE.md)** - Structured learning path with exercises
+3. **[ARCHITECTURE.md](./ARCHITECTURE.md)** - Understand how it's built
+4. **[CODE_WALKTHROUGH.md](./CODE_WALKTHROUGH.md)** - Line-by-line code explanation
 
 ### For Developers
 
@@ -298,6 +300,9 @@ See [TESTING.md](./TESTING.md) for Docker-based testing procedures.
 ---
 
 ## Documentation Index
+
+### User Documentation
+- **[STUDENT_MANUAL.md](./STUDENT_MANUAL.md)** - Complete user guide for bootcamp students
 
 ### Learning Resources
 - **[LEARNING_GUIDE.md](./LEARNING_GUIDE.md)** - Pedagogical guide with exercises for students
