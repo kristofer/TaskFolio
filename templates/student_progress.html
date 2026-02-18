@@ -235,6 +235,9 @@
             transform: translateY(-2px);
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
         }
+        .task-card-overdue {
+            background: #ffe4e6 !important;
+        }
         .task-card-title {
             font-size: 14px;
             font-weight: 600;
@@ -695,6 +698,18 @@
             const card = document.createElement('div');
             card.className = 'task-card-kanban';
             card.dataset.taskId = task.id;
+
+            // Check if task is overdue (but not completed)
+            if (task.dueDate && task.status !== 'completed') {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const dueDate = new Date(task.dueDate);
+                dueDate.setHours(0, 0, 0, 0);
+                
+                if (dueDate < today) {
+                    card.classList.add('task-card-overdue');
+                }
+            }
 
             let typeClass = '';
             if (task.taskType) {
