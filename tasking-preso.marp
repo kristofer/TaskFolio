@@ -1,0 +1,252 @@
+---
+marp: true
+theme: default
+paginate: true
+backgroundColor: #fff
+style: |
+  section {
+    font-size: 28px;
+  }
+  h1 {
+    color: #2563eb;
+  }
+  h2 {
+    color: #3b82f6;
+  }
+---
+
+<!-- _class: lead -->
+# Welcome to **Tasking**
+
+## Your Personal Task Management System
+
+**Zip Code Wilmington**
+
+---
+
+# What is Tasking?
+
+A **multi-tenant web application** designed specifically for students and instructors
+
+✅ **Personal Task Management** - Create and track your own tasks
+✅ **Instructor Assignments** - Receive tasks from instructors  
+✅ **Visual Organization** - Kanban board workflow
+✅ **Progress Tracking** - Monitor completion status
+✅ **Cohort Integration** - Organized by your cohort
+
+---
+
+# Why Use Tasking?
+
+During your bootcamp, you'll juggle:
+
+- 📝 Individual programming labs
+- 👥 Group programming projects  
+- 📚 Reading assignments
+- 📄 Documentation tasks
+- 💼 Resume building
+- 🚀 Professional development
+- 🎤 Demo presentations
+
+**Tasking helps you see everything in one place**
+
+---
+
+# Understanding Kanban
+
+**Kanban** (看板) = "visual signal" in Japanese
+
+Originally from manufacturing, now widely used in software development
+
+### Why it works:
+- **Visualize** all your work at once
+- **Limit** work in progress
+- **Improve** workflow
+- **Identify** bottlenecks
+- **Track** progress
+
+---
+
+# The Four Columns
+
+### 📋 **Pending** (To Do)
+Tasks you haven't started yet - your backlog
+
+### 🔄 **In Progress** (Doing)  
+Tasks you're actively working on - limit these!
+
+### 🚧 **Blocked** (Stuck)
+Tasks stopped by dependencies - need help
+
+### ✅ **Completed** (Done)
+Finished tasks - celebrate your progress!
+
+---
+
+# Your Dashboard
+
+![w:900](https://via.placeholder.com/900x400/2563eb/ffffff?text=Kanban+Board+View)
+
+- **Header** - Username, role, logout
+- **Action Buttons** - Add tasks, view groups
+- **Kanban Board** - Four columns with task cards
+- **Drag & Drop** - Move tasks between columns
+
+---
+
+# Task Categories (Part 1)
+
+**9 task types** to organize your work:
+
+- 👥 **Group Programming Project** - Team coding assignments
+- 💻 **Individual Programming Lab** - Solo coding exercises
+- 📚 **Reading** - Textbooks, docs, articles
+- 📄 **Documentation** - README files, technical writing
+- 📝 **Resume** - Building your professional resume
+
+---
+
+# Task Categories (Part 2)
+
+More task types:
+
+- 🚀 **ProDev** - Professional development, networking
+- 🎤 **Demo/Presentation** - Project demos, presentations
+- 🔬 **Research/Analysis/Design** - System design, architecture
+- 📊 **Organize** - Planning and meta-work
+
+**Each type has a color-coded badge for quick visual identification**
+
+---
+
+# Daily Workflow
+
+### Morning (5 min)
+✓ Check Pending - what's due?
+✓ Review In Progress - what can you finish?
+✓ Check for new instructor tasks
+
+### During the Day
+✓ Move tasks as you work on them
+✓ Mark Blocked if stuck
+✓ Move to Completed when done
+
+### Evening (5 min)
+✓ Update statuses
+✓ Plan for tomorrow
+
+---
+
+# Managing Work in Progress
+
+### 🎯 **Limit your WIP**
+Keep only **2-3 tasks** "In Progress" at once
+
+### Why?
+- Multiple partial tasks = nothing done
+- Context switching is expensive
+- Focus = better quality work
+- **Finished is better than perfect**
+
+### Rule of thumb:
+**Stop starting, start finishing!**
+
+---
+
+# Instructor-Assigned Tasks
+
+### Types of assignments:
+1. **Individual** - Assigned directly to you
+2. **Cohort** - Assigned to entire cohort
+3. **Group** - Assigned to specific team
+
+### What you can do:
+✅ View details and requirements
+✅ Update status (move between columns)
+✅ Mark as Blocked if you need help
+
+### What you cannot do:
+❌ Delete or edit instructor tasks
+
+---
+
+# What Instructors Can See
+
+### ✅ Instructors CAN:
+- View your Kanban board
+- See task statuses and progress
+- Identify students who need help
+- Track cohort-wide completion
+
+### ❌ Instructors CANNOT:
+- Move your tasks between columns
+- Edit your personal tasks
+- Delete your tasks
+- Change your statuses
+
+**You own your board and your progress!**
+
+---
+
+# Tasking vs Other Tools
+
+### **GitHub Projects**
+Best for: Repository-specific work, issues, PRs
+Use for: Managing code within a single project
+
+### **Trello**  
+Best for: General-purpose project management
+Use for: Personal life, side projects
+
+### **Tasking**
+Best for: **All your bootcamp work in one place**
+Use for: Course assignments, readings, professional development
+
+**Many students use all three together!**
+
+---
+
+# Best Practices
+
+### ✅ **Do This:**
+- Start each day with your board
+- Keep tasks small (hours, not days)
+- Update at least twice daily
+- Use the Blocked status when stuck
+- Add resource URLs for quick access
+
+### ❌ **Avoid This:**
+- Having 10+ tasks In Progress
+- Ignoring instructor assignments
+- Keeping everything in Pending
+- Working in silence when blocked
+
+---
+
+# Getting Started
+
+### Three Simple Steps:
+
+1. **Log in** with your credentials
+2. **Review** any instructor-assigned tasks
+3. **Create** your first personal task
+
+### Resources:
+- 📖 Complete Student Manual (read after this)
+- 👨‍🏫 Ask your instructor for help
+- 💬 Cohort chat for peer support
+
+---
+
+<!-- _class: lead -->
+
+# Questions?
+
+## Next Steps:
+1. Log into Tasking today
+2. Read the Student Manual
+3. Start organizing your work!
+
+### **Your success starts with organization** 🚀
+
+---
