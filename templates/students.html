@@ -256,6 +256,73 @@
             display: flex;
             gap: 10px;
         }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: #000;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        .form-group input[type="text"],
+        .form-group input[type="date"],
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        .template-search-result {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 5px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .template-search-result:hover {
+            background-color: #f0f0f0;
+        }
+        .template-search-result.selected {
+            background-color: #dbeafe;
+            border-color: #3b82f6;
+        }
     </style>
 </head>
 <body>
@@ -313,6 +380,7 @@
                             <label for="selectAllCurrent" style="cursor: pointer; margin: 0;">Select All</label>
                         </div>
                         <button id="addTaskToFilteredBtn" class="btn btn-success btn-small" onclick="addTaskToFiltered()" disabled aria-label="Add task to selected students">Add Task to Selected</button>
+                        <button id="assignTemplateBtn" class="btn btn-primary btn-small" onclick="showAssignTemplateModal()" disabled aria-label="Assign template to selected students">Assign Template</button>
                         <button id="moveToPastBtn" class="btn btn-danger btn-small" onclick="moveStudents('current', 'move_to_past')" disabled aria-label="Move selected current students to past students">Move to Past</button>
                     </div>
                 </div>
@@ -490,6 +558,10 @@
                 if (addTaskButton) {
                     addTaskButton.disabled = checkboxes.length === 0;
                 }
+                const assignTemplateButton = document.getElementById('assignTemplateBtn');
+                if (assignTemplateButton) {
+                    assignTemplateButton.disabled = checkboxes.length === 0;
+                }
             }
         }
         
@@ -553,6 +625,158 @@
             document.body.appendChild(form);
             form.submit();
         }
+        
+        // Task Template Assignment Functions
+        let selectedTemplate = null;
+        
+        function showAssignTemplateModal() {
+            const checkboxes = document.querySelectorAll('.student-checkbox-current:checked');
+            if (checkboxes.length === 0) {
+                alert('Please select at least one student');
+                return;
+            }
+            
+            document.getElementById('assignTemplateModal').style.display = 'block';
+            document.getElementById('templateSearchBox').focus();
+            
+            // Load initial templates
+            searchTemplates('');
+        }
+        
+        function closeAssignTemplateModal() {
+            document.getElementById('assignTemplateModal').style.display = 'none';
+            selectedTemplate = null;
+            document.getElementById('templateSearchBox').value = '';
+            document.getElementById('templateSearchResults').innerHTML = '';
+        }
+        
+        function searchTemplates(query) {
+            fetch('/api/task-templates?q=' + encodeURIComponent(query))
+                .then(response => response.json())
+                .then(templates => {
+                    const resultsDiv = document.getElementById('templateSearchResults');
+                    resultsDiv.innerHTML = '';
+                    
+                    if (templates.length === 0) {
+                        resultsDiv.innerHTML = '<p style="color: #999; padding: 10px;">No templates found</p>';
+                        return;
+                    }
+                    
+                    templates.forEach(template => {
+                        const div = document.createElement('div');
+                        div.className = 'template-search-result';
+                        div.innerHTML = `
+                            <strong>${template.Title}</strong><br>
+                            <small style="color: #666;">${template.Description || 'No description'}</small>
+                        `;
+                        div.onclick = () => selectTemplate(template, div);
+                        resultsDiv.appendChild(div);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error searching templates:', error);
+                    alert('Error searching templates. Please try again.');
+                });
+        }
+        
+        function selectTemplate(template, element) {
+            selectedTemplate = template;
+            
+            // Update UI to show selection
+            document.querySelectorAll('.template-search-result').forEach(el => {
+                el.classList.remove('selected');
+            });
+            element.classList.add('selected');
+            
+            // Populate form fields
+            document.getElementById('selectedTemplateTitle').value = template.Title;
+            document.getElementById('selectedTemplateDescription').value = template.Description || '';
+        }
+        
+        function assignTemplate() {
+            if (!selectedTemplate) {
+                alert('Please select a template');
+                return;
+            }
+            
+            const checkboxes = document.querySelectorAll('.student-checkbox-current:checked');
+            const studentIds = Array.from(checkboxes).map(cb => cb.value);
+            const dueDate = document.getElementById('templateDueDate').value;
+            
+            if (studentIds.length === 0) {
+                alert('Please select at least one student');
+                return;
+            }
+            
+            // Create form data
+            const formData = new FormData();
+            formData.append('template_id', selectedTemplate.ID);
+            formData.append('due_date', dueDate);
+            studentIds.forEach(id => {
+                formData.append('student_ids', id);
+            });
+            
+            // Submit assignment
+            fetch('/task-templates/assign', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(`Successfully assigned template to ${data.tasksCreated} student(s)`);
+                    closeAssignTemplateModal();
+                    window.location.reload();
+                } else {
+                    alert('Error assigning template. Please try again.');
+                }
+            })
+            .catch(error => {
+                console.error('Error assigning template:', error);
+                alert('Error assigning template. Please try again.');
+            });
+        }
     </script>
+    
+    <!-- Assign Template Modal -->
+    <div id="assignTemplateModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Assign Task Template</h2>
+                <span class="close" onclick="closeAssignTemplateModal()">&times;</span>
+            </div>
+            
+            <div class="form-group">
+                <label for="templateSearchBox">Search Templates</label>
+                <input type="text" id="templateSearchBox" placeholder="Search by title or description..." oninput="searchTemplates(this.value)">
+            </div>
+            
+            <div class="form-group">
+                <label>Select Template</label>
+                <div id="templateSearchResults" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px; padding: 5px;">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="selectedTemplateTitle">Template Title</label>
+                <input type="text" id="selectedTemplateTitle" readonly style="background-color: #f5f5f5;">
+            </div>
+            
+            <div class="form-group">
+                <label for="selectedTemplateDescription">Description</label>
+                <input type="text" id="selectedTemplateDescription" readonly style="background-color: #f5f5f5;">
+            </div>
+            
+            <div class="form-group">
+                <label for="templateDueDate">Due Date</label>
+                <input type="date" id="templateDueDate">
+            </div>
+            
+            <div class="action-buttons">
+                <button type="button" onclick="assignTemplate()" class="btn btn-primary">Assign to Students</button>
+                <button type="button" onclick="closeAssignTemplateModal()" class="btn">Cancel</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
