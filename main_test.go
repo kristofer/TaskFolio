@@ -5214,3 +5214,470 @@ t.Errorf("Expected student '%s' not found in results", username)
 }
 }
 }
+
+// TestTaskTemplateCreation tests creating task templates
+func TestTaskTemplateCreation(t *testing.T) {
+testDB := createTestDB(t)
+defer testDB.Close()
+
+// Create task_templates table
+_, err := testDB.Exec(`
+CREATE TABLE IF NOT EXISTS task_templates (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+title TEXT NOT NULL,
+description TEXT,
+task_type TEXT,
+resource_url TEXT,
+created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+`)
+if err != nil {
+t.Fatalf("Failed to create task_templates table: %v", err)
+}
+
+// Test inserting task templates
+tests := []struct {
+title       string
+description string
+taskType    string
+resourceURL string
+}{
+{"Lab 1", "Complete Java basics", "individual-programming-lab", "https://example.com/lab1"},
+{"Reading Assignment", "Read chapter 5", "reading", "https://example.com/chapter5"},
+{"Group Project", "Build a web app", "group-programming-project", ""},
+}
+
+for _, tt := range tests {
+_, err := testDB.Exec(`
+INSERT INTO task_templates (title, description, task_type, resource_url)
+VALUES (?, ?, ?, ?)
+`, tt.title, tt.description, tt.taskType, tt.resourceURL)
+if err != nil {
+t.Errorf("Failed to insert task template %s: %v", tt.title, err)
+}
+}
+
+// Verify templates were created
+var count int
+err = testDB.QueryRow("SELECT COUNT(*) FROM task_templates").Scan(&count)
+if err != nil {
+t.Fatalf("Failed to count task templates: %v", err)
+}
+
+if count != len(tests) {
+t.Errorf("Expected %d task templates, got %d", len(tests), count)
+}
+}
+
+// TestTaskTemplateRetrieval tests retrieving task templates
+func TestTaskTemplateRetrieval(t *testing.T) {
+testDB := createTestDB(t)
+defer testDB.Close()
+
+// Create task_templates table
+_, err := testDB.Exec(`
+CREATE TABLE IF NOT EXISTS task_templates (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+title TEXT NOT NULL,
+description TEXT,
+task_type TEXT,
+resource_url TEXT,
+created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+`)
+if err != nil {
+t.Fatalf("Failed to create task_templates table: %v", err)
+}
+
+// Insert test data
+_, err = testDB.Exec(`
+INSERT INTO task_templates (title, description, task_type, resource_url)
+VALUES 
+('Lab 1', 'Java basics', 'individual-programming-lab', 'https://example.com/lab1'),
+('Reading 1', 'Chapter 5', 'reading', 'https://example.com/chapter5')
+`)
+if err != nil {
+t.Fatalf("Failed to insert test data: %v", err)
+}
+
+// Retrieve templates
+rows, err := testDB.Query(`
+SELECT id, title, COALESCE(description, ''), COALESCE(task_type, ''), COALESCE(resource_url, '')
+FROM task_templates ORDER BY created_at DESC
+`)
+if err != nil {
+t.Fatalf("Failed to query task templates: %v", err)
+}
+defer rows.Close()
+
+var templates []struct {
+ID          int
+Title       string
+Description string
+TaskType    string
+ResourceURL string
+}
+for rows.Next() {
+var tmpl struct {
+ID          int
+Title       string
+Description string
+TaskType    string
+ResourceURL string
+}
+rows.Scan(&tmpl.ID, &tmpl.Title, &tmpl.Description, &tmpl.TaskType, &tmpl.ResourceURL)
+templates = append(templates, tmpl)
+}
+
+if len(templates) != 2 {
+t.Errorf("Expected 2 task templates, got %d", len(templates))
+}
+
+// Verify data - check that both templates are present (order may vary)
+titleFound := make(map[string]bool)
+for _, tmpl := range templates {
+titleFound[tmpl.Title] = true
+}
+
+if !titleFound["Lab 1"] {
+t.Errorf("Expected to find 'Lab 1' template")
+}
+if !titleFound["Reading 1"] {
+t.Errorf("Expected to find 'Reading 1' template")
+}
+}
+
+// TestTaskTemplateUpdate tests updating task templates
+func TestTaskTemplateUpdate(t *testing.T) {
+testDB := createTestDB(t)
+defer testDB.Close()
+
+// Create task_templates table
+_, err := testDB.Exec(`
+CREATE TABLE IF NOT EXISTS task_templates (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+title TEXT NOT NULL,
+description TEXT,
+task_type TEXT,
+resource_url TEXT,
+created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+`)
+if err != nil {
+t.Fatalf("Failed to create task_templates table: %v", err)
+}
+
+// Insert test template
+result, err := testDB.Exec(`
+INSERT INTO task_templates (title, description, task_type, resource_url)
+VALUES ('Lab 1', 'Old description', 'individual-programming-lab', 'https://old.com')
+`)
+if err != nil {
+t.Fatalf("Failed to insert test template: %v", err)
+}
+
+templateID, _ := result.LastInsertId()
+
+// Update template
+_, err = testDB.Exec(`
+UPDATE task_templates
+SET title = ?, description = ?, task_type = ?, resource_url = ?
+WHERE id = ?
+`, "Lab 1 Updated", "New description", "reading", "https://new.com", templateID)
+if err != nil {
+t.Fatalf("Failed to update template: %v", err)
+}
+
+// Verify update
+var title, description, taskType, resourceURL string
+err = testDB.QueryRow(`
+SELECT title, COALESCE(description, ''), COALESCE(task_type, ''), COALESCE(resource_url, '')
+FROM task_templates WHERE id = ?
+`, templateID).Scan(&title, &description, &taskType, &resourceURL)
+if err != nil {
+t.Fatalf("Failed to query updated template: %v", err)
+}
+
+if title != "Lab 1 Updated" {
+t.Errorf("Expected title 'Lab 1 Updated', got '%s'", title)
+}
+if description != "New description" {
+t.Errorf("Expected description 'New description', got '%s'", description)
+}
+if taskType != "reading" {
+t.Errorf("Expected task type 'reading', got '%s'", taskType)
+}
+if resourceURL != "https://new.com" {
+t.Errorf("Expected resource URL 'https://new.com', got '%s'", resourceURL)
+}
+}
+
+// TestTaskTemplateDeletion tests deleting task templates
+func TestTaskTemplateDeletion(t *testing.T) {
+testDB := createTestDB(t)
+defer testDB.Close()
+
+// Create task_templates table
+_, err := testDB.Exec(`
+CREATE TABLE IF NOT EXISTS task_templates (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+title TEXT NOT NULL,
+description TEXT,
+task_type TEXT,
+resource_url TEXT,
+created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+`)
+if err != nil {
+t.Fatalf("Failed to create task_templates table: %v", err)
+}
+
+// Insert test templates
+_, err = testDB.Exec(`
+INSERT INTO task_templates (title, description, task_type, resource_url)
+VALUES 
+('Lab 1', 'Description 1', 'individual-programming-lab', 'https://example.com/1'),
+('Lab 2', 'Description 2', 'reading', 'https://example.com/2')
+`)
+if err != nil {
+t.Fatalf("Failed to insert test templates: %v", err)
+}
+
+// Delete first template
+_, err = testDB.Exec("DELETE FROM task_templates WHERE title = 'Lab 1'")
+if err != nil {
+t.Fatalf("Failed to delete template: %v", err)
+}
+
+// Verify deletion
+var count int
+err = testDB.QueryRow("SELECT COUNT(*) FROM task_templates").Scan(&count)
+if err != nil {
+t.Fatalf("Failed to count templates: %v", err)
+}
+
+if count != 1 {
+t.Errorf("Expected 1 template after deletion, got %d", count)
+}
+
+// Verify remaining template
+var title string
+err = testDB.QueryRow("SELECT title FROM task_templates").Scan(&title)
+if err != nil {
+t.Fatalf("Failed to query remaining template: %v", err)
+}
+
+if title != "Lab 2" {
+t.Errorf("Expected remaining template 'Lab 2', got '%s'", title)
+}
+}
+
+// TestTaskTemplateAssignment tests assigning templates to create tasks
+func TestTaskTemplateAssignment(t *testing.T) {
+testDB := createTestDB(t)
+defer testDB.Close()
+
+// Create task_templates table
+_, err := testDB.Exec(`
+CREATE TABLE IF NOT EXISTS task_templates (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+title TEXT NOT NULL,
+description TEXT,
+task_type TEXT,
+resource_url TEXT,
+created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+`)
+if err != nil {
+t.Fatalf("Failed to create task_templates table: %v", err)
+}
+
+// Insert test user (instructor)
+_, err = testDB.Exec(`
+INSERT INTO users (username, password, role)
+VALUES ('instructor1', 'password', 'instructor')
+`)
+if err != nil {
+t.Fatalf("Failed to insert instructor: %v", err)
+}
+
+// Insert test students
+_, err = testDB.Exec(`
+INSERT INTO users (username, password, role)
+VALUES 
+('student1', 'password', 'student'),
+('student2', 'password', 'student')
+`)
+if err != nil {
+t.Fatalf("Failed to insert students: %v", err)
+}
+
+// Insert test template
+result, err := testDB.Exec(`
+INSERT INTO task_templates (title, description, task_type, resource_url)
+VALUES ('Lab 1', 'Java basics', 'individual-programming-lab', 'https://example.com/lab1')
+`)
+if err != nil {
+t.Fatalf("Failed to insert template: %v", err)
+}
+
+templateID, _ := result.LastInsertId()
+
+// Get template
+var template struct {
+ID          int
+Title       string
+Description string
+TaskType    string
+ResourceURL string
+}
+err = testDB.QueryRow(`
+SELECT id, title, COALESCE(description, ''), COALESCE(task_type, ''), COALESCE(resource_url, '')
+FROM task_templates WHERE id = ?
+`, templateID).Scan(&template.ID, &template.Title, &template.Description, &template.TaskType, &template.ResourceURL)
+if err != nil {
+t.Fatalf("Failed to get template: %v", err)
+}
+
+// Assign template to students (create tasks)
+studentIDs := []int{2, 3} // student1 and student2
+dueDate := "2025-12-31"
+instructorID := 1
+
+for _, studentID := range studentIDs {
+_, err = testDB.Exec(`
+INSERT INTO tasks (title, description, due_date, status, owner_id, created_by, task_type, resource_url)
+VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)
+`, template.Title, template.Description, dueDate, studentID, instructorID, template.TaskType, template.ResourceURL)
+if err != nil {
+t.Fatalf("Failed to create task for student %d: %v", studentID, err)
+}
+}
+
+// Verify tasks were created
+var taskCount int
+err = testDB.QueryRow("SELECT COUNT(*) FROM tasks").Scan(&taskCount)
+if err != nil {
+t.Fatalf("Failed to count tasks: %v", err)
+}
+
+if taskCount != 2 {
+t.Errorf("Expected 2 tasks created, got %d", taskCount)
+}
+
+// Verify task details
+rows, err := testDB.Query(`
+SELECT title, description, task_type, resource_url, owner_id, created_by
+FROM tasks
+`)
+if err != nil {
+t.Fatalf("Failed to query tasks: %v", err)
+}
+defer rows.Close()
+
+for rows.Next() {
+var title, description, taskType, resourceURL string
+var ownerID, createdBy int
+rows.Scan(&title, &description, &taskType, &resourceURL, &ownerID, &createdBy)
+
+if title != "Lab 1" {
+t.Errorf("Expected task title 'Lab 1', got '%s'", title)
+}
+if taskType != "individual-programming-lab" {
+t.Errorf("Expected task type 'individual-programming-lab', got '%s'", taskType)
+}
+if createdBy != instructorID {
+t.Errorf("Expected created_by %d, got %d", instructorID, createdBy)
+}
+if ownerID != 2 && ownerID != 3 {
+t.Errorf("Unexpected owner_id %d", ownerID)
+}
+}
+}
+
+// TestTaskTemplateSearch tests searching task templates
+func TestTaskTemplateSearch(t *testing.T) {
+testDB := createTestDB(t)
+defer testDB.Close()
+
+// Create task_templates table
+_, err := testDB.Exec(`
+CREATE TABLE IF NOT EXISTS task_templates (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+title TEXT NOT NULL,
+description TEXT,
+task_type TEXT,
+resource_url TEXT,
+created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+`)
+if err != nil {
+t.Fatalf("Failed to create task_templates table: %v", err)
+}
+
+// Insert test templates
+_, err = testDB.Exec(`
+INSERT INTO task_templates (title, description, task_type, resource_url)
+VALUES 
+('Java Lab 1', 'Learn Java basics', 'individual-programming-lab', 'https://example.com/java1'),
+('Python Lab 1', 'Learn Python basics', 'individual-programming-lab', 'https://example.com/python1'),
+('Reading Chapter 1', 'Read about design patterns', 'reading', 'https://example.com/reading1')
+`)
+if err != nil {
+t.Fatalf("Failed to insert test templates: %v", err)
+}
+
+// Test search by title
+searchQuery := "Java"
+rows, err := testDB.Query(`
+SELECT id, title, COALESCE(description, ''), COALESCE(task_type, ''), COALESCE(resource_url, '')
+FROM task_templates
+WHERE title LIKE ? OR description LIKE ?
+ORDER BY title
+`, "%"+searchQuery+"%", "%"+searchQuery+"%")
+if err != nil {
+t.Fatalf("Failed to search templates: %v", err)
+}
+defer rows.Close()
+
+var results []string
+for rows.Next() {
+var id int
+var title, description, taskType, resourceURL string
+rows.Scan(&id, &title, &description, &taskType, &resourceURL)
+results = append(results, title)
+}
+
+if len(results) != 1 {
+t.Errorf("Expected 1 search result for 'Java', got %d", len(results))
+}
+
+if len(results) > 0 && results[0] != "Java Lab 1" {
+t.Errorf("Expected 'Java Lab 1', got '%s'", results[0])
+}
+
+// Test search by description
+searchQuery = "basics"
+rows2, err := testDB.Query(`
+SELECT id, title, COALESCE(description, ''), COALESCE(task_type, ''), COALESCE(resource_url, '')
+FROM task_templates
+WHERE title LIKE ? OR description LIKE ?
+ORDER BY title
+`, "%"+searchQuery+"%", "%"+searchQuery+"%")
+if err != nil {
+t.Fatalf("Failed to search templates: %v", err)
+}
+defer rows2.Close()
+
+var results2 []string
+for rows2.Next() {
+var id int
+var title, description, taskType, resourceURL string
+rows2.Scan(&id, &title, &description, &taskType, &resourceURL)
+results2 = append(results2, title)
+}
+
+if len(results2) != 2 {
+t.Errorf("Expected 2 search results for 'basics', got %d", len(results2))
+}
+}

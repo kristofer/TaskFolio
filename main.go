@@ -70,6 +70,15 @@ type TaskStats struct {
 	Completed  int
 }
 
+type TaskTemplate struct {
+	ID          int
+	Title       string
+	Description string
+	TaskType    string // Same as Task task types
+	ResourceURL string
+	CreatedAt   time.Time
+}
+
 func initDB() error {
 	var err error
 	dbPath := os.Getenv("DATABASE_PATH")
@@ -149,6 +158,21 @@ func initDB() error {
 			PRIMARY KEY (group_id, student_id),
 			FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE,
 			FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create task_templates table for instructor task template library
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS task_templates (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			description TEXT,
+			task_type TEXT CHECK(task_type IN ('group-programming-project', 'individual-programming-lab', 'reading', 'document', 'resume', 'prodev', 'demo-presentation', 'research-analysis-design', 'organize', '')),
+			resource_url TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)
 	`)
 	if err != nil {
@@ -2285,6 +2309,574 @@ func addInstructorHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/instructors", http.StatusSeeOther)
 }
 
+// taskTemplatesHandler displays list of task templates for instructors
+func taskTemplatesHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can access this page
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	// Get all task templates
+	rows, err := db.Query(`
+		SELECT id, title, COALESCE(description, ''), COALESCE(task_type, ''), COALESCE(resource_url, ''), created_at
+		FROM task_templates ORDER BY created_at DESC
+	`)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var taskTemplates []TaskTemplate
+	for rows.Next() {
+		var t TaskTemplate
+		rows.Scan(&t.ID, &t.Title, &t.Description, &t.TaskType, &t.ResourceURL, &t.CreatedAt)
+		taskTemplates = append(taskTemplates, t)
+	}
+
+	data := struct {
+		User      User
+		Templates []TaskTemplate
+	}{
+		User:      user,
+		Templates: taskTemplates,
+	}
+
+	templates.ExecuteTemplate(w, "task_templates.html", data)
+}
+
+// addTaskTemplateHandler handles adding a new task template
+func addTaskTemplateHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can add task templates
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	title := r.FormValue("title")
+	description := r.FormValue("description")
+	taskType := r.FormValue("task_type")
+	resourceURL := r.FormValue("resource_url")
+
+	// Validate required fields
+	if title == "" {
+		http.Error(w, "Title is required", http.StatusBadRequest)
+		return
+	}
+
+	// Insert new task template
+	_, err = db.Exec(`
+		INSERT INTO task_templates (title, description, task_type, resource_url)
+		VALUES (?, ?, ?, ?)
+	`, title, description, taskType, resourceURL)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/task-templates", http.StatusSeeOther)
+}
+
+// editTaskTemplateHandler handles editing a task template
+func editTaskTemplateHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can edit task templates
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	templateID := r.FormValue("id")
+	title := r.FormValue("title")
+	description := r.FormValue("description")
+	taskType := r.FormValue("task_type")
+	resourceURL := r.FormValue("resource_url")
+
+	// Validate required fields
+	if title == "" {
+		http.Error(w, "Title is required", http.StatusBadRequest)
+		return
+	}
+
+	// Update task template
+	_, err = db.Exec(`
+		UPDATE task_templates
+		SET title = ?, description = ?, task_type = ?, resource_url = ?
+		WHERE id = ?
+	`, title, description, taskType, resourceURL, templateID)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/task-templates", http.StatusSeeOther)
+}
+
+// deleteTaskTemplateHandler handles deleting a task template
+func deleteTaskTemplateHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can delete task templates
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	templateID := r.FormValue("id")
+
+	// Delete task template
+	_, err = db.Exec(`DELETE FROM task_templates WHERE id = ?`, templateID)
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/task-templates", http.StatusSeeOther)
+}
+
+// importTaskTemplatesHandler handles bulk import of task templates from CSV file
+func importTaskTemplatesHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can import task templates
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse multipart form (max 1MB for CSV files)
+	err = r.ParseMultipartForm(1 << 20)
+	if err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	file, _, err := r.FormFile("csvfile")
+	if err != nil {
+		http.Error(w, "Failed to read file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Read and parse CSV
+	var importedTemplates []string
+	var failedImports []string
+	lineNum := 0
+
+	csvReader := csv.NewReader(file)
+	csvReader.FieldsPerRecord = -1 // Allow variable fields (4 expected)
+	csvReader.TrimLeadingSpace = true
+
+	for {
+		record, err := csvReader.Read()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			http.Error(w, "Failed to read CSV file", http.StatusBadRequest)
+			return
+		}
+
+		lineNum++
+
+		// Skip empty lines
+		if len(record) == 0 || (len(record) == 1 && strings.TrimSpace(record[0]) == "") {
+			continue
+		}
+
+		// Validate CSV has expected number of fields (4)
+		if len(record) != 4 {
+			failedImports = append(failedImports, fmt.Sprintf("Line %d: Invalid format (expected 4 fields: Title, Description, TaskType, ResourceURL)", lineNum))
+			continue
+		}
+
+		title := strings.TrimSpace(record[0])
+		description := strings.TrimSpace(record[1])
+		taskType := strings.TrimSpace(record[2])
+		resourceURL := strings.TrimSpace(record[3])
+
+		if title == "" {
+			failedImports = append(failedImports, fmt.Sprintf("Line %d: Title is required", lineNum))
+			continue
+		}
+
+		// Validate task type if provided
+		validTaskTypes := map[string]bool{
+			"group-programming-project":  true,
+			"individual-programming-lab": true,
+			"reading":                    true,
+			"document":                   true,
+			"resume":                     true,
+			"prodev":                     true,
+			"demo-presentation":          true,
+			"research-analysis-design":   true,
+			"organize":                   true,
+			"":                           true, // Empty is allowed
+		}
+		if !validTaskTypes[taskType] {
+			failedImports = append(failedImports, fmt.Sprintf("Line %d: Invalid task type '%s'", lineNum, taskType))
+			continue
+		}
+
+		// Insert task template
+		_, err = db.Exec(`
+			INSERT INTO task_templates (title, description, task_type, resource_url)
+			VALUES (?, ?, ?, ?)
+		`, title, description, taskType, resourceURL)
+
+		if err != nil {
+			failedImports = append(failedImports, fmt.Sprintf("%s: %v", title, err))
+		} else {
+			importedTemplates = append(importedTemplates, title)
+		}
+	}
+
+	// Generate report
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html>
+<head>
+    <title>Import Results - Tasking</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f5f7fa; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h1 { color: #2C5F7C; }
+        .success { color: #065f46; background: #d1fae5; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        .error { color: #991b1b; background: #fee2e2; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        .list { margin: 10px 0; padding-left: 20px; }
+        .btn { 
+            display: inline-block;
+            padding: 10px 20px; 
+            background: #667eea; 
+            color: white; 
+            text-decoration: none; 
+            border-radius: 5px; 
+            margin-top: 20px;
+        }
+        .btn:hover { opacity: 0.9; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Task Template Import Results</h1>
+`)
+
+	if len(importedTemplates) > 0 {
+		fmt.Fprintf(w, `<div class="success">
+            <h2>Successfully Imported: %d template(s)</h2>
+            <ul class="list">`, len(importedTemplates))
+		for _, title := range importedTemplates {
+			fmt.Fprintf(w, "<li>%s</li>", html.EscapeString(title))
+		}
+		fmt.Fprintf(w, "</ul></div>")
+	}
+
+	if len(failedImports) > 0 {
+		fmt.Fprintf(w, `<div class="error">
+            <h2>Failed Imports: %d</h2>
+            <ul class="list">`, len(failedImports))
+		for _, failure := range failedImports {
+			fmt.Fprintf(w, "<li>%s</li>", html.EscapeString(failure))
+		}
+		fmt.Fprintf(w, "</ul></div>")
+	}
+
+	if len(importedTemplates) == 0 && len(failedImports) == 0 {
+		fmt.Fprintf(w, `<div class="error">No templates were imported. Please check your CSV file format.</div>`)
+	}
+
+	fmt.Fprintf(w, `
+        <a href="/task-templates" class="btn">← Back to Task Templates</a>
+    </div>
+</body>
+</html>`)
+}
+
+// exportTaskTemplatesHandler handles exporting selected task templates to CSV
+func exportTaskTemplatesHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can export task templates
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	// Get selected template IDs
+	templateIDs := r.Form["template_ids"]
+	if len(templateIDs) == 0 {
+		http.Error(w, "No templates selected", http.StatusBadRequest)
+		return
+	}
+
+	// Build query to get selected templates
+	placeholders := make([]string, len(templateIDs))
+	args := make([]interface{}, len(templateIDs))
+	for i, id := range templateIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(`
+		SELECT title, COALESCE(description, ''), COALESCE(task_type, ''), COALESCE(resource_url, '')
+		FROM task_templates WHERE id IN (%s)
+		ORDER BY created_at DESC
+	`, strings.Join(placeholders, ","))
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	// Set CSV headers
+	w.Header().Set("Content-Type", "text/csv")
+	w.Header().Set("Content-Disposition", "attachment; filename=task_templates.csv")
+
+	// Create CSV writer
+	csvWriter := csv.NewWriter(w)
+	defer csvWriter.Flush()
+
+	// Write data
+	for rows.Next() {
+		var title, description, taskType, resourceURL string
+		rows.Scan(&title, &description, &taskType, &resourceURL)
+		csvWriter.Write([]string{title, description, taskType, resourceURL})
+	}
+}
+
+// assignTaskTemplateHandler handles assigning a task template to students
+func assignTaskTemplateHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can assign task templates
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get parameters
+	templateID := r.FormValue("template_id")
+	dueDate := r.FormValue("due_date")
+	studentIDs := r.Form["student_ids"]
+
+	if templateID == "" || len(studentIDs) == 0 {
+		http.Error(w, "Template ID and student IDs are required", http.StatusBadRequest)
+		return
+	}
+
+	// Get the template
+	var template TaskTemplate
+	err = db.QueryRow(`
+		SELECT id, title, COALESCE(description, ''), COALESCE(task_type, ''), COALESCE(resource_url, '')
+		FROM task_templates WHERE id = ?
+	`, templateID).Scan(&template.ID, &template.Title, &template.Description, &template.TaskType, &template.ResourceURL)
+
+	if err != nil {
+		http.Error(w, "Template not found", http.StatusNotFound)
+		return
+	}
+
+	// Create tasks for each student
+	tasksCreated := 0
+	for _, studentIDStr := range studentIDs {
+		studentID, err := strconv.Atoi(studentIDStr)
+		if err != nil {
+			continue
+		}
+
+		_, err = db.Exec(`
+			INSERT INTO tasks (title, description, due_date, status, owner_id, created_by, task_type, resource_url)
+			VALUES (?, ?, ?, 'pending', ?, ?, ?, ?)
+		`, template.Title, template.Description, dueDate, studentID, user.ID, template.TaskType, template.ResourceURL)
+
+		if err == nil {
+			tasksCreated++
+		}
+	}
+
+	// Return JSON response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":      true,
+		"tasksCreated": tasksCreated,
+	})
+}
+
+// apiTaskTemplatesHandler provides JSON API for task templates (for search/autocomplete)
+func apiTaskTemplatesHandler(w http.ResponseWriter, r *http.Request) {
+	session, err := getSession(r)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	user, err := getUserByID(session.UserID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusInternalServerError)
+		return
+	}
+
+	// Only instructors can access this API
+	if user.Role != "instructor" {
+		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	// Get search query if provided
+	searchQuery := r.URL.Query().Get("q")
+
+	var rows *sql.Rows
+	if searchQuery != "" {
+		rows, err = db.Query(`
+			SELECT id, title, COALESCE(description, ''), COALESCE(task_type, ''), COALESCE(resource_url, '')
+			FROM task_templates
+			WHERE title LIKE ? OR description LIKE ?
+			ORDER BY title
+			LIMIT 50
+		`, "%"+searchQuery+"%", "%"+searchQuery+"%")
+	} else {
+		rows, err = db.Query(`
+			SELECT id, title, COALESCE(description, ''), COALESCE(task_type, ''), COALESCE(resource_url, '')
+			FROM task_templates
+			ORDER BY created_at DESC
+			LIMIT 50
+		`)
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var taskTemplates []TaskTemplate
+	for rows.Next() {
+		var t TaskTemplate
+		rows.Scan(&t.ID, &t.Title, &t.Description, &t.TaskType, &t.ResourceURL)
+		taskTemplates = append(taskTemplates, t)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(taskTemplates)
+}
+
 // updateTaskStatusHandler handles AJAX requests to update task status
 func updateTaskStatusHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
@@ -2991,6 +3583,14 @@ func main() {
 	http.HandleFunc("/instructors/add", addInstructorHandler)
 	http.HandleFunc("/api/cohorts", apiCohortsHandler)
 	http.HandleFunc("/api/students", apiStudentsHandler)
+	http.HandleFunc("/task-templates", taskTemplatesHandler)
+	http.HandleFunc("/task-templates/add", addTaskTemplateHandler)
+	http.HandleFunc("/task-templates/edit", editTaskTemplateHandler)
+	http.HandleFunc("/task-templates/delete", deleteTaskTemplateHandler)
+	http.HandleFunc("/task-templates/import", importTaskTemplatesHandler)
+	http.HandleFunc("/task-templates/export", exportTaskTemplatesHandler)
+	http.HandleFunc("/task-templates/assign", assignTaskTemplateHandler)
+	http.HandleFunc("/api/task-templates", apiTaskTemplatesHandler)
 
 	port := os.Getenv("PORT")
 	if port == "" {

@@ -19,6 +19,8 @@ Tasks ──┬── Groups (group_id)
 
 Groups ──┬── GroupMembers
          └── Tasks (group_id)
+
+TaskTemplates (standalone, used by instructors to create tasks)
 ```
 
 ## Tables
@@ -145,6 +147,47 @@ CREATE TABLE group_members (
 - Composite primary key ensures each student can only be in a group once
 - CASCADE delete ensures cleanup when groups or students are removed
 
+### task_templates
+Reusable task templates that instructors can create, import, and assign to students.
+
+```sql
+CREATE TABLE task_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    task_type TEXT CHECK(task_type IN (
+        'group-programming-project',
+        'individual-programming-lab',
+        'reading',
+        'document',
+        'resume',
+        'prodev',
+        'demo-presentation',
+        'research-analysis-design',
+        'organize',
+        ''
+    )),
+    resource_url TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**Fields:**
+- `id`: Auto-incrementing primary key
+- `title`: Template title/name
+- `description`: Description of the task template
+- `task_type`: Type of task (same types as tasks table)
+- `resource_url`: URL to external resources for the template
+- `created_at`: Creation timestamp
+
+**Usage:**
+Instructors can:
+- Create templates manually via the UI
+- Import templates from CSV files (format: Title, Description, TaskType, ResourceURL)
+- Export selected templates to CSV
+- Search and assign templates to filtered students with custom due dates
+- Edit and delete templates from the library
+
 ## Key Relationships
 
 ### Task Ownership vs Creation
@@ -199,6 +242,29 @@ WHERE gm.group_id = ?;
 SELECT * FROM tasks 
 WHERE group_id = ? 
 ORDER BY created_at DESC;
+```
+
+### Get All Task Templates
+```sql
+SELECT * FROM task_templates 
+ORDER BY created_at DESC;
+```
+
+### Search Task Templates
+```sql
+SELECT * FROM task_templates 
+WHERE title LIKE ? OR description LIKE ?
+ORDER BY title;
+```
+
+### Assign Task Template to Students
+```sql
+-- First, get the template
+SELECT * FROM task_templates WHERE id = ?;
+
+-- Then create tasks for each student
+INSERT INTO tasks (title, description, due_date, status, owner_id, created_by, task_type, resource_url)
+VALUES (?, ?, ?, 'pending', ?, ?, ?, ?);
 ```
 
 ## Database Migrations
