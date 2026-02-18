@@ -39,6 +39,8 @@ A multi-tenant web-based task management system for Zip Code Wilmington coding b
 - Manage student groups
 - Track student progress
 - Suspend/unsuspend accounts
+- **Task Templates Library**: Create, import, export, and manage reusable task templates
+- Quickly assign task templates to multiple students with custom due dates
 
 ---
 
@@ -174,6 +176,44 @@ See [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md) for complete schema documentation
 - Tasks table (task management with status tracking)
 - Groups table (team collaboration)
 - Group members (many-to-many relationships)
+- Task templates (reusable task library for instructors)
+
+---
+
+## Using Task Templates (Instructor Feature)
+
+Task templates allow instructors to create a library of reusable tasks that can be quickly assigned to students.
+
+### Creating Templates
+
+1. Navigate to "Task Templates" from the home page
+2. Click "Add Template" to create a new template
+3. Or click "Import CSV" to bulk import templates
+
+**CSV Import Format:**
+```csv
+Title, Description, TaskType, ResourceURL
+Lab 1, Complete Java basics, individual-programming-lab, https://github.com/...
+Reading Chapter 5, Design patterns, reading, https://docs.google.com/...
+```
+
+### Assigning Templates to Students
+
+1. Go to "Manage Students"
+2. Use the search/filter to find students
+3. Select students using checkboxes
+4. Click "Assign Template"
+5. Search for and select a template
+6. Set a due date (optional)
+7. Click "Assign to Students"
+
+The template will create individual tasks for each selected student with the template's content.
+
+### Managing Templates
+
+- **Edit**: Update template details from the Task Templates page
+- **Delete**: Remove templates that are no longer needed
+- **Export**: Select templates and export to CSV for backup or sharing
 
 ---
 

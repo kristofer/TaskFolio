@@ -2696,6 +2696,12 @@ func exportTaskTemplatesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse form data
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
 	// Get selected template IDs
 	templateIDs := r.Form["template_ids"]
 	if len(templateIDs) == 0 {
