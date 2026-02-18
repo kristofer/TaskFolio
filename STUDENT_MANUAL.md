@@ -23,11 +23,11 @@
 
 ## Introduction
 
-**Welcome to Tasking!** This is your personal task management system designed specifically for Zip Code Wilmington coding bootcamp students. Tasking helps you stay organized, track your progress, and manage the many assignments, projects, and professional development activities you'll encounter during your journey.
+**Welcome to Tasking!** This is your personal task management system designed specifically for Zip Code Wilmington students. Tasking helps you stay organized, track your progress, and manage the many assignments, projects, and professional development activities you'll encounter during your journey.
 
 ### What is Tasking?
 
-Tasking is a **multi-tenant web application** built specifically for bootcamp students and instructors. It provides:
+Tasking is a **multi-tenant web application** built specifically for students and instructors. It provides:
 
 - **Personal Task Management**: Create and track your own tasks
 - **Instructor Assignments**: Receive and manage tasks assigned by instructors
@@ -37,7 +37,7 @@ Tasking is a **multi-tenant web application** built specifically for bootcamp st
 
 ### Why Use Tasking?
 
-During your bootcamp, you'll juggle:
+During your time at Zip Code Wilmington, you'll juggle:
 - Individual programming labs
 - Group programming projects
 - Reading assignments
@@ -57,7 +57,7 @@ Tasking helps you **see everything in one place** and **stay in control** of you
 
 1. **Open your web browser** and navigate to the Tasking application URL provided by your instructor
 2. **Log in** with your assigned username and password
-   - Your username is typically: `student1`, `student2`, etc. (or your assigned ID)
+   - Your username is typically first initial, last name (or your assigned ID)
    - Your initial password will be provided by your instructor
 3. **Dashboard**: After logging in, you'll see your personal Kanban board
 
@@ -67,14 +67,6 @@ When you first log in:
 1. Review any tasks already assigned to you by instructors
 2. Familiarize yourself with the four status columns (explained below)
 3. Consider creating a few personal tasks to get comfortable with the system
-
-### Demo Account for Practice
-
-If you're just exploring, you can use:
-- **Username**: `student1`, `student2`, or `student3`
-- **Password**: `password123`
-
-**Note**: These are demo accounts. Your instructor will provide your real credentials.
 
 ---
 
@@ -103,6 +95,7 @@ Your Tasking board has **four status columns**:
 - This is your backlog of work
 
 **When to use**: This is where tasks start. Don't let this column get too overwhelming—prioritize what's most important.
+You can drag the cards to order them in priority.
 
 #### 2. **In Progress** (Doing)
 - Tasks you're actively working on
@@ -155,7 +148,7 @@ When you log into Tasking, you'll see your **Kanban board** as the main interfac
 
 3. **Kanban Board**
    - Four columns: Pending, In Progress, Blocked, Completed
-   - Task cards in each column
+   - Task cards in each column which can be dragged to order them
    - Drag-and-drop capability to move tasks between columns
 
 4. **Task Cards**
@@ -240,7 +233,7 @@ Tasking supports **nine task types** to help you categorize your work. Each type
 
 **Example**: "Complete Lab 5: Linked Lists"
 
-**Tips**: These are usually the most frequent tasks in your bootcamp
+**Tips**: These are usually the most frequent tasks in your program
 
 ---
 
@@ -285,7 +278,7 @@ Tasking supports **nine task types** to help you categorize your work. Each type
 
 **Example**: "Update resume with new Java skills"
 
-**Tips**: Keep your resume updated throughout the bootcamp
+**Tips**: Keep your resume updated throughout the course
 
 ---
 
@@ -363,7 +356,7 @@ Tasking supports **nine task types** to help you categorize your work. Each type
 
 ## Organizing Your Work
 
-Effective task management is a skill that will serve you beyond bootcamp. Here's how to use Tasking to stay organized.
+Effective task management is a skill that will serve you beyond your time at Zip Code Wilmington. Here's how to use Tasking to stay organized.
 
 ### Daily Workflow
 
@@ -599,7 +592,7 @@ Both Tasking and GitHub Projects use Kanban boards, but they serve different pur
 
 ### Tasking
 
-**What it is**: Personal task management system for bootcamp students
+**What it is**: Personal task management system for students
 
 **Primary purpose**: Managing all aspects of your learning journey
 
@@ -626,7 +619,7 @@ Both Tasking and GitHub Projects use Kanban boards, but they serve different pur
 - You need integration with GitHub features
 
 **Use Tasking when**:
-- Managing your overall bootcamp workload
+- Managing your overall workload at Zip Code Wilmington
 - Tracking reading assignments
 - Managing professional development tasks
 - Viewing instructor-assigned work
@@ -640,7 +633,7 @@ Both Tasking and GitHub Projects use Kanban boards, but they serve different pur
 - Track bugs, features, and pull requests
 - Manage project-specific work
 
-**Tasking**: For your overall bootcamp organization
+**Tasking**: For your overall organization at Zip Code Wilmington
 - See all your work in one place
 - Track assignments across projects
 - Manage non-coding tasks
@@ -685,35 +678,35 @@ Trello is a popular general-purpose Kanban tool. Here's how it compares to Taski
 - Mobile apps
 - Free tier available
 
-**Limitations for bootcamp students**:
+**Limitations for students**:
 - No built-in instructor assignment features
 - Requires manual setup for each cohort
-- No predefined task categories for bootcamp work
+- No predefined task categories for work
 - You need to create structure from scratch
 
 ### Tasking
 
-**What it is**: Purpose-built task management for coding bootcamp students
+**What it is**: Purpose-built task management for students
 
-**Primary purpose**: Managing bootcamp work and instructor assignments
+**Primary purpose**: Managing course work and instructor assignments
 
 **Best for**:
-- Bootcamp-specific workflows
+- Zipcode-specific workflows
 - Receiving instructor assignments
-- Categorizing bootcamp work types
+- Categorizing work types
 - Cohort-based organization
 
 **Key features**:
-- Predefined task categories for bootcamp work
+- Predefined task categories for course work
 - Instructor assignment capability
 - Cohort integration
 - Built specifically for student-instructor workflow
 - Designed for Zip Code Wilmington context
 
 **Strengths**:
-- No setup needed—ready for bootcamp use
+- No setup needed—ready for course use
 - Instructor can assign tasks directly
-- Task types match bootcamp reality
+- Task types match course reality
 - Integrated with your cohort
 - View-only instructor access built in
 
@@ -721,15 +714,15 @@ Trello is a popular general-purpose Kanban tool. Here's how it compares to Taski
 - Less flexible (by design)
 - Fewer integrations
 - More opinionated structure
-- Bootcamp-specific (not general-purpose)
+- Course-specific (not general-purpose)
 
 ### Key Differences
 
 | Feature | Tasking | Trello |
 |---------|---------|--------|
-| **Purpose** | Bootcamp student task management | General-purpose project management |
+| **Purpose** | Course student task management | General-purpose project management |
 | **Instructor Assignments** | ✅ Built-in | ❌ Manual workaround needed |
-| **Task Categories** | ✅ Predefined for bootcamp | ⚠️ Manual labels |
+| **Task Categories** | ✅ Predefined for course work | ⚠️ Manual labels |
 | **Customization** | ⚠️ Limited (structured) | ✅ Highly flexible |
 | **Cohort Integration** | ✅ Built-in | ❌ Manual setup |
 | **Learning Curve** | ✅ Quick (opinionated design) | ⚠️ Requires setup |
@@ -742,29 +735,29 @@ Trello is a popular general-purpose Kanban tool. Here's how it compares to Taski
 **Use Tasking when**:
 - You're a Zip Code Wilmington student
 - You want instructor-assigned tasks
-- You want a pre-structured bootcamp workflow
-- You need to see all bootcamp work in one place
+- You want a pre-structured course workflow
+- You need to see all course work in one place
 
 **Use Trello when**:
 - You want to plan personal projects
 - You need deep customization
 - You want mobile apps
-- You're organizing non-bootcamp life (personal tasks, hobbies, etc.)
+- You're organizing non-course life (personal tasks, hobbies, etc.)
 - You want extensive integrations
 
 **Use both**:
-- Tasking for bootcamp work
+- Tasking for course work
 - Trello for personal life, side projects, or extracurricular activities
 
 ### Why Tasking Exists
 
 Tasking was built specifically because general tools like Trello don't have:
 - **Instructor assignment features**: No built-in way for instructors to assign work
-- **Bootcamp task types**: You'd need to create labels manually
+- **Course task types**: You'd need to create labels manually
 - **Student-instructor workflow**: No view-only instructor access
 - **Cohort organization**: No built-in multi-tenant structure
 
-**Tasking = Trello + bootcamp-specific features - unnecessary flexibility**
+**Tasking = Trello + course-specific features - unnecessary flexibility**
 
 ---
 
@@ -773,7 +766,7 @@ Tasking was built specifically because general tools like Trello don't have:
 ### Productivity Tips
 
 **1. Start Each Day with Your Board**
-- Make Tasking your browser homepage during bootcamp
+- Make Tasking your browser homepage during course
 - Review your board first thing in the morning
 - Know your priorities before you start coding
 
@@ -920,13 +913,13 @@ Tasking was built specifically because general tools like Trello don't have:
 - **Tasking User Guide**: This document
 - **Instructor Office Hours**: For task clarification
 - **Cohort Slack/Discord**: Peer support
-- **Zip Code Resources**: General bootcamp support
+- **Zip Code Resources**: General course support
 
 ---
 
 ## Conclusion
 
-**Tasking is your command center** for navigating the bootcamp experience. By using it effectively, you'll:
+**Tasking is your command center** for navigating the course experience. By using it effectively, you'll:
 
 ✅ Stay organized across multiple projects and assignments
 ✅ Never miss important deadlines
@@ -935,11 +928,11 @@ Tasking was built specifically because general tools like Trello don't have:
 ✅ Reduce stress by seeing the big picture
 ✅ Build habits that will serve you in your career
 
-**Remember**: The best task management system is the one you actually use. Make Tasking part of your daily routine, and it will pay dividends throughout your bootcamp and beyond.
+**Remember**: The best task management system is the one you actually use. Make Tasking part of your daily routine, and it will pay dividends throughout your course and beyond.
 
 ---
 
-**Ready to get started?** Log in to Tasking and start organizing your bootcamp journey today!
+**Ready to get started?** Log in to Tasking and start organizing your course journey today!
 
 **Questions?** Ask your instructor or check the [main documentation](./README.md).
 
@@ -947,6 +940,6 @@ Tasking was built specifically because general tools like Trello don't have:
 
 ---
 
-*Document Version: 1.0*  
+*Document Version: 1.3*  
 *Last Updated: February 2026*  
-*For: Zip Code Wilmington Coding Bootcamp Students*
+*For: Zip Code Wilmington Students*
