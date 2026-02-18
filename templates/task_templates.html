@@ -187,6 +187,36 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
+        .search-box {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            width: 300px;
+        }
+        th.sortable {
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            padding-right: 25px;
+        }
+        th.sortable:hover {
+            background: #5568d3;
+        }
+        th.sortable::after {
+            content: '⇅';
+            position: absolute;
+            right: 8px;
+            opacity: 0.5;
+        }
+        th.sortable.sort-asc::after {
+            content: '↑';
+            opacity: 1;
+        }
+        th.sortable.sort-desc::after {
+            content: '↓';
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -208,16 +238,19 @@
         </div>
         
         {{if .Templates}}
+        <div style="margin-bottom: 20px;">
+            <input type="text" id="searchBox" class="search-box" placeholder="Search templates by title, description, type, or URL..." onkeyup="filterTemplates()">
+        </div>
         <div class="templates-table">
             <form id="exportForm" method="POST" action="/task-templates/export">
                 <table>
                     <thead>
                         <tr>
                             <th class="checkbox-col"><input type="checkbox" id="selectAll" onclick="toggleSelectAll()"></th>
-                            <th>Title</th>
-                            <th>Description</th>
-                            <th>Type</th>
-                            <th>Resource URL</th>
+                            <th class="sortable" onclick="sortTable(0)">Title</th>
+                            <th class="sortable" onclick="sortTable(1)">Description</th>
+                            <th class="sortable" onclick="sortTable(2)">Type</th>
+                            <th class="sortable" onclick="sortTable(3)">Resource URL</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -431,6 +464,87 @@
                 return;
             }
             document.getElementById('exportForm').submit();
+        }
+
+        // Search functionality
+        function filterTemplates() {
+            const searchTerm = document.getElementById('searchBox').value.toLowerCase();
+            const table = document.querySelector('.templates-table table');
+            const rows = table.getElementsByTagName('tbody')[0].getElementsByTagName('tr');
+            
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                const cells = row.getElementsByTagName('td');
+                
+                // Get text from title (index 1), description (index 2), type (index 3), and resource URL (index 4)
+                const title = cells[1].textContent.toLowerCase();
+                const description = cells[2].textContent.toLowerCase();
+                const type = cells[3].textContent.toLowerCase();
+                const resourceUrl = cells[4].textContent.toLowerCase();
+                
+                // Check if search term is in any of the fields
+                if (title.includes(searchTerm) || 
+                    description.includes(searchTerm) || 
+                    type.includes(searchTerm) || 
+                    resourceUrl.includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            }
+        }
+
+        // Sorting functionality
+        let sortDirections = [0, 0, 0, 0]; // 0 = unsorted, 1 = ascending, -1 = descending
+        
+        function sortTable(columnIndex) {
+            const table = document.querySelector('.templates-table table');
+            const tbody = table.getElementsByTagName('tbody')[0];
+            const rows = Array.from(tbody.getElementsByTagName('tr'));
+            
+            // Update sort direction
+            sortDirections[columnIndex] = sortDirections[columnIndex] === 1 ? -1 : 1;
+            
+            // Update header styling
+            const headers = table.getElementsByTagName('th');
+            for (let i = 0; i < headers.length; i++) {
+                if (headers[i].classList.contains('sortable')) {
+                    headers[i].classList.remove('sort-asc', 'sort-desc');
+                }
+            }
+            
+            // Add appropriate class to sorted column
+            const sortedHeader = headers[columnIndex + 1]; // +1 because first column is checkbox
+            if (sortDirections[columnIndex] === 1) {
+                sortedHeader.classList.add('sort-asc');
+            } else {
+                sortedHeader.classList.add('sort-desc');
+            }
+            
+            // Sort rows
+            rows.sort((a, b) => {
+                const aCell = a.getElementsByTagName('td')[columnIndex + 1]; // +1 for checkbox column
+                const bCell = b.getElementsByTagName('td')[columnIndex + 1];
+                
+                let aValue = aCell.textContent.trim();
+                let bValue = bCell.textContent.trim();
+                
+                // Handle empty values (represented as "-")
+                if (aValue === '-') aValue = '';
+                if (bValue === '-') bValue = '';
+                
+                // Compare values
+                if (aValue < bValue) {
+                    return -1 * sortDirections[columnIndex];
+                }
+                if (aValue > bValue) {
+                    return 1 * sortDirections[columnIndex];
+                }
+                return 0;
+            });
+            
+            // Reorder rows in the table
+            rows.forEach(row => tbody.appendChild(row));
         }
 
         // Close modals when clicking outside
