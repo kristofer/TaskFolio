@@ -1049,11 +1049,13 @@
             if (task.dueDate && task.status !== 'completed') {
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
-                const dueDate = new Date(task.dueDate);
-                dueDate.setHours(0, 0, 0, 0);
-                
-                if (dueDate < today) {
-                    card.classList.add('task-card-overdue');
+                const parts = task.dueDate.split('-').map(Number);
+                if (parts.length === 3 && !parts.some(isNaN)) {
+                    const [year, month, day] = parts;
+                    const dueDate = new Date(year, month - 1, day);
+                    if (dueDate < today) {
+                        card.classList.add('task-card-overdue');
+                    }
                 }
             }
 
