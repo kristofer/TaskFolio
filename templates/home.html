@@ -820,12 +820,13 @@
 
             document.getElementById('modalCreatedAt').textContent = task.createdAt;
 
-            // Show/hide edit and delete buttons if user created this task
+            // Always store task ID so comment saving works for all owned tasks
+            window.currentTaskId = task.id;
+
+            // Show/hide edit and delete buttons only if user created this task
             const modalFooter = document.getElementById('modalFooter');
             if (task.createdBy === currentUserId) {
                 modalFooter.style.display = 'flex';
-                // Store task ID for edit/delete operations
-                window.currentTaskId = task.id;
             } else {
                 modalFooter.style.display = 'none';
             }
