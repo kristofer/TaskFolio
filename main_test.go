@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -152,6 +153,38 @@ func TestDatabaseInitialization(t *testing.T) {
 		t.Errorf("Expected 2 tables, got %d", count)
 	}
 }
+
+func TestWALMode(t *testing.T) {
+	// WAL mode only applies to file-based databases; use a temp file.
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "wal_test.db")
+
+	// Point initDB() at the temp file and restore afterwards.
+	t.Setenv("DATABASE_PATH", dbPath)
+
+	// Save and restore the global db so other tests are unaffected.
+	prevDB := db
+	defer func() {
+		if db != nil && db != prevDB {
+			db.Close()
+		}
+		db = prevDB
+	}()
+
+	if err := initDB(); err != nil {
+		t.Fatalf("initDB() failed: %v", err)
+	}
+
+	var mode string
+	if err := db.QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil {
+		t.Fatalf("Failed to query journal mode: %v", err)
+	}
+
+	if mode != "wal" {
+		t.Errorf("Expected journal_mode=wal after initDB(), got %q", mode)
+	}
+}
+
 
 func TestUserCreation(t *testing.T) {
 	testDB, err := sql.Open("sqlite3", ":memory:")

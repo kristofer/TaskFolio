@@ -90,6 +90,13 @@ func initDB() error {
 		return err
 	}
 
+	// Enable WAL mode for better concurrent read performance and durability.
+	// WAL (Write-Ahead Logging) allows readers to proceed without blocking writers
+	// and vice versa. This is a no-op for in-memory databases.
+	if _, err = db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		return err
+	}
+
 	// Create users table with new fields
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS users (
