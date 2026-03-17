@@ -1,0 +1,411 @@
+/*
+ * ZCW Classic Color Palette
+ * Zip Code Wilmington - Classic Theme
+ * Source: https://yoda-public-files.s3.us-east-2.amazonaws.com/zcw-color-palettes/CSS/classic.css
+ */
+
+:root {
+    /* --- ZCW Classic Core Palette --- */
+    --zcw-primary:          #0D2E5C;   /* Deep Navy */
+    --zcw-primary-hover:    #1a4a8a;   /* Navy Hover */
+    --zcw-secondary:        #1571BD;   /* Steel Blue */
+    --zcw-secondary-hover:  #105DA0;   /* Steel Blue Hover */
+    --zcw-accent:           #00A3D9;   /* Light Blue Accent */
+    --zcw-gold:             #F4A21B;   /* ZCW Gold */
+    --zcw-gold-dark:        #D4891A;   /* ZCW Gold Dark */
+
+    /* --- Semantic / State Colors --- */
+    --zcw-success:          #28A745;   /* Green */
+    --zcw-success-bg:       #D4EDDA;
+    --zcw-success-text:     #155724;
+    --zcw-warning:          #FFC107;   /* Amber */
+    --zcw-warning-bg:       #FFF3CD;
+    --zcw-warning-text:     #856404;
+    --zcw-danger:           #DC3545;   /* Red */
+    --zcw-danger-bg:        #F8D7DA;
+    --zcw-danger-text:      #721C24;
+    --zcw-info:             #17A2B8;   /* Teal */
+    --zcw-info-bg:          #D1ECF1;
+    --zcw-info-text:        #0C5460;
+
+    /* --- Neutral / UI Colors --- */
+    --zcw-light:            #F0F4F8;   /* Page Background */
+    --zcw-surface:          #FFFFFF;   /* Card / Surface */
+    --zcw-dark:             #1E2532;   /* Dark Text */
+    --zcw-text:             #212529;
+    --zcw-text-muted:       #6C757D;
+    --zcw-text-light:       #ADB5BD;
+    --zcw-border:           #CDD5DF;
+    --zcw-border-light:     #E9ECEF;
+
+    /* --- Header / Navigation --- */
+    --zcw-header-bg:        linear-gradient(135deg, #0D2E5C 0%, #1571BD 100%);
+    --zcw-header-text:      #FFFFFF;
+    --zcw-nav-hover:        rgba(255, 255, 255, 0.15);
+
+    /* --- Status Badge Colors --- */
+    --zcw-status-pending-bg:     #FFF3CD;
+    --zcw-status-pending-text:   #856404;
+    --zcw-status-blocked-bg:     #F8D7DA;
+    --zcw-status-blocked-text:   #721C24;
+    --zcw-status-progress-bg:    #CCE5FF;
+    --zcw-status-progress-text:  #004085;
+    --zcw-status-completed-bg:   #D4EDDA;
+    --zcw-status-completed-text: #155724;
+
+    /* --- Progress Bar Colors --- */
+    --zcw-progress-pending:     #FFC107;
+    --zcw-progress-blocked:     #DC3545;
+    --zcw-progress-inprogress:  #1571BD;
+    --zcw-progress-completed:   #28A745;
+}
+
+/* =====================================================================
+   HEADER / NAVIGATION
+   ===================================================================== */
+.header {
+    background: var(--zcw-header-bg) !important;
+    color: var(--zcw-header-text) !important;
+}
+
+.header h1,
+.header .logo,
+.header a {
+    color: var(--zcw-header-text) !important;
+}
+
+.role-badge {
+    background: rgba(255, 255, 255, 0.2) !important;
+    color: var(--zcw-header-text) !important;
+}
+
+.nav-link,
+.header .nav-link {
+    color: var(--zcw-header-text) !important;
+}
+
+.nav-link:hover,
+.header .nav-link:hover {
+    background: var(--zcw-nav-hover) !important;
+}
+
+/* =====================================================================
+   BUTTONS
+   ===================================================================== */
+.btn {
+    background: var(--zcw-surface) !important;
+    color: var(--zcw-secondary) !important;
+    border-color: var(--zcw-secondary) !important;
+    transition: background 0.2s, color 0.2s, border-color 0.2s !important;
+}
+
+.btn:hover {
+    opacity: 0.9 !important;
+}
+
+/* Primary button – navy */
+.btn-primary {
+    background: var(--zcw-secondary) !important;
+    color: var(--zcw-surface) !important;
+    border-color: var(--zcw-secondary) !important;
+}
+
+.btn-primary:hover {
+    background: var(--zcw-secondary-hover) !important;
+    border-color: var(--zcw-secondary-hover) !important;
+}
+
+/* Danger / delete button – red */
+.btn-danger {
+    background: var(--zcw-danger) !important;
+    color: var(--zcw-surface) !important;
+    border-color: var(--zcw-danger) !important;
+}
+
+.btn-danger:hover {
+    background: #c82333 !important;
+    border-color: #bd2130 !important;
+}
+
+/* Success button – green */
+.btn-success {
+    background: var(--zcw-success) !important;
+    color: var(--zcw-surface) !important;
+    border-color: var(--zcw-success) !important;
+}
+
+.btn-success:hover {
+    background: #218838 !important;
+    border-color: #1e7e34 !important;
+}
+
+/* Warning button – amber */
+.btn-warning {
+    background: var(--zcw-warning) !important;
+    color: var(--zcw-dark) !important;
+    border-color: var(--zcw-warning) !important;
+}
+
+.btn-warning:hover {
+    background: var(--zcw-gold-dark) !important;
+    border-color: var(--zcw-gold-dark) !important;
+}
+
+/* Info button – teal */
+.btn-info {
+    background: var(--zcw-info) !important;
+    color: var(--zcw-surface) !important;
+    border-color: var(--zcw-info) !important;
+}
+
+/* Add-task circular button */
+.add-task-btn {
+    background: var(--zcw-secondary) !important;
+    color: var(--zcw-surface) !important;
+}
+
+.add-task-btn:hover {
+    background: var(--zcw-secondary-hover) !important;
+}
+
+/* =====================================================================
+   FORMS / INPUTS
+   ===================================================================== */
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="email"]:focus,
+input[type="number"]:focus,
+input[type="date"]:focus,
+textarea:focus,
+select:focus {
+    border-color: var(--zcw-secondary) !important;
+    outline: none !important;
+    box-shadow: 0 0 0 2px rgba(21, 113, 189, 0.2) !important;
+}
+
+/* =====================================================================
+   STATUS BADGES
+   ===================================================================== */
+.status-pending {
+    background: var(--zcw-status-pending-bg) !important;
+    color: var(--zcw-status-pending-text) !important;
+}
+
+.status-blocked {
+    background: var(--zcw-status-blocked-bg) !important;
+    color: var(--zcw-status-blocked-text) !important;
+}
+
+.status-in_progress {
+    background: var(--zcw-status-progress-bg) !important;
+    color: var(--zcw-status-progress-text) !important;
+}
+
+.status-completed {
+    background: var(--zcw-status-completed-bg) !important;
+    color: var(--zcw-status-completed-text) !important;
+}
+
+/* =====================================================================
+   BADGE VARIANTS (active / inactive / type)
+   ===================================================================== */
+.badge-active {
+    background: var(--zcw-success-bg) !important;
+    color: var(--zcw-success-text) !important;
+}
+
+.badge-inactive {
+    background: var(--zcw-danger-bg) !important;
+    color: var(--zcw-danger-text) !important;
+}
+
+.badge-type {
+    background: var(--zcw-info-bg) !important;
+    color: var(--zcw-info-text) !important;
+}
+
+/* =====================================================================
+   TASK TYPE BADGES
+   ===================================================================== */
+.type-group-programming-project {
+    background: #F8D7DA !important;
+    color: #721C24 !important;
+}
+
+.type-individual-programming-lab {
+    background: #CCE5FF !important;
+    color: #004085 !important;
+}
+
+.type-reading {
+    background: #FFF3CD !important;
+    color: #856404 !important;
+}
+
+.type-document {
+    background: #D4EDDA !important;
+    color: #155724 !important;
+}
+
+.type-resume {
+    background: #E2E3FF !important;
+    color: #383D9F !important;
+}
+
+.type-prodev {
+    background: #FDDDE6 !important;
+    color: #6B1024 !important;
+}
+
+.type-demo-presentation {
+    background: #FFE5CC !important;
+    color: #7C3800 !important;
+}
+
+/* =====================================================================
+   GROUP BADGE
+   ===================================================================== */
+.group-badge {
+    background: var(--zcw-info-bg) !important;
+    color: var(--zcw-info-text) !important;
+}
+
+/* =====================================================================
+   PROGRESS BARS
+   ===================================================================== */
+.progress-bar-pending,
+[style*="#f59e0b"],
+[style*="#fbbf24"] {
+    background-color: var(--zcw-progress-pending) !important;
+}
+
+.progress-bar-blocked,
+[style*="#ef4444"],
+[style*="#f87171"] {
+    background-color: var(--zcw-progress-blocked) !important;
+}
+
+.progress-bar-inprogress,
+[style*="#3b82f6"],
+[style*="#60a5fa"] {
+    background-color: var(--zcw-progress-inprogress) !important;
+}
+
+.progress-bar-completed,
+[style*="#10b981"],
+[style*="#34d399"] {
+    background-color: var(--zcw-progress-completed) !important;
+}
+
+/* =====================================================================
+   CARDS / SURFACES
+   ===================================================================== */
+.task-card,
+.task-card-list,
+.login-container,
+.stat-card,
+.info-card,
+.card {
+    background: var(--zcw-surface) !important;
+}
+
+/* =====================================================================
+   ERROR / ALERT BOXES
+   ===================================================================== */
+.error {
+    background: var(--zcw-danger-bg) !important;
+    color: var(--zcw-danger-text) !important;
+    border-color: #F5C6CB !important;
+}
+
+.success-message,
+.alert-success {
+    background: var(--zcw-success-bg) !important;
+    color: var(--zcw-success-text) !important;
+    border-color: #C3E6CB !important;
+}
+
+.warning-message,
+.alert-warning {
+    background: var(--zcw-warning-bg) !important;
+    color: var(--zcw-warning-text) !important;
+    border-color: #FFEEBA !important;
+}
+
+/* =====================================================================
+   LOGIN PAGE
+   ===================================================================== */
+.login-page-bg,
+body.login-body {
+    background: var(--zcw-header-bg) !important;
+}
+
+/* =====================================================================
+   OVERDUE CARDS
+   ===================================================================== */
+.task-card-overdue {
+    background: #FFDDE1 !important;
+    border-left: 3px solid var(--zcw-danger) !important;
+}
+
+/* =====================================================================
+   STAT CARDS (task stats / student progress)
+   ===================================================================== */
+.stat-pending   { background: var(--zcw-warning-bg) !important; color: var(--zcw-warning-text) !important; }
+.stat-blocked   { background: var(--zcw-danger-bg) !important;  color: var(--zcw-danger-text) !important; }
+.stat-progress  { background: #CCE5FF !important;               color: #004085 !important; }
+.stat-completed { background: var(--zcw-success-bg) !important; color: var(--zcw-success-text) !important; }
+
+/* =====================================================================
+   TABS (students page, etc.)
+   ===================================================================== */
+.tab-btn.active,
+.tab-active {
+    background: var(--zcw-secondary) !important;
+    color: var(--zcw-surface) !important;
+    border-color: var(--zcw-secondary) !important;
+}
+
+/* =====================================================================
+   LINKS
+   ===================================================================== */
+a {
+    color: var(--zcw-secondary);
+}
+
+a:hover {
+    color: var(--zcw-primary);
+}
+
+/* =====================================================================
+   COLUMN HEADERS (Kanban board)
+   ===================================================================== */
+.column-header {
+    border-bottom-color: var(--zcw-border) !important;
+}
+
+.column-title {
+    color: var(--zcw-dark) !important;
+}
+
+/* =====================================================================
+   TABLES
+   ===================================================================== */
+thead th,
+.table-header th {
+    background: var(--zcw-primary) !important;
+    color: var(--zcw-surface) !important;
+}
+
+tr:nth-child(even) {
+    background: var(--zcw-border-light) !important;
+}
+
+/* =====================================================================
+   MODAL OVERLAY
+   ===================================================================== */
+.modal-header,
+.modal-title {
+    background: var(--zcw-header-bg) !important;
+    color: var(--zcw-surface) !important;
+}
