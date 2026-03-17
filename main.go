@@ -3574,6 +3574,9 @@ func main() {
 	}
 	templates = template.Must(template.New("").Funcs(funcMap).ParseGlob("templates/*.html"))
 
+	// Serve static files (CSS, JS, images)
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+
 	// Setup routes
 	http.HandleFunc("/", homeHandler)
 	http.HandleFunc("/login", loginHandler)
