@@ -394,7 +394,7 @@
                     <table>
                         <thead>
                             <tr>
-                                <th style="width: 40px;"></th>
+                                <th style="width: 40px;"><input type="checkbox" id="selectVisibleCurrent" title="Select all visible students" onchange="toggleSelectVisible('current')"></th>
                                 <th>Username</th>
                                 <th>Progress</th>
                                 <th>Cohort</th>
@@ -406,7 +406,7 @@
                             {{range .CurrentStudents}}
                             <tr class="student-row" data-username="{{.Username}}" data-cohort="{{.CohortName}}" data-student-id="{{.ID}}">
                                 <td>
-                                    <input type="checkbox" class="student-checkbox-current" value="{{.ID}}" onchange="updateMoveButton('current')">
+                                    <input type="checkbox" class="student-checkbox-current" value="{{.ID}}" onchange="updateMoveButton('current'); updateVisibleHeaderCheckbox('current')">
                                 </td>
                                 <td>{{.Username}}</td>
                                 <td class="progress-cell">
@@ -464,7 +464,7 @@
                     <table>
                         <thead>
                             <tr>
-                                <th style="width: 40px;"></th>
+                                <th style="width: 40px;"><input type="checkbox" id="selectVisiblePast" title="Select all visible students" onchange="toggleSelectVisible('past')"></th>
                                 <th>Username</th>
                                 <th>Progress</th>
                                 <th>Cohort</th>
@@ -476,7 +476,7 @@
                             {{range .PastStudents}}
                             <tr class="student-row">
                                 <td>
-                                    <input type="checkbox" class="student-checkbox-past" value="{{.ID}}" onchange="updateMoveButton('past')">
+                                    <input type="checkbox" class="student-checkbox-past" value="{{.ID}}" onchange="updateMoveButton('past'); updateVisibleHeaderCheckbox('past')">
                                 </td>
                                 <td>{{.Username}}</td>
                                 <td class="progress-cell">
@@ -542,14 +542,58 @@
         }
         
         function toggleSelectAll(pane) {
-            const checkboxes = document.querySelectorAll('.student-checkbox-' + pane);
+            const tbody = document.getElementById(pane === 'current' ? 'currentStudentsBody' : 'pastStudentsBody');
             const selectAllCheckbox = document.getElementById('selectAll' + (pane === 'current' ? 'Current' : 'Past'));
             
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = selectAllCheckbox.checked;
+            // Only select visible rows
+            const visibleRows = Array.from(tbody.querySelectorAll('.student-row')).filter(row => row.style.display !== 'none');
+            visibleRows.forEach(row => {
+                const checkbox = row.querySelector('.student-checkbox-' + pane);
+                if (checkbox) checkbox.checked = selectAllCheckbox.checked;
             });
+
+            // Sync the column header checkbox
+            const headerCheckbox = document.getElementById('selectVisible' + (pane === 'current' ? 'Current' : 'Past'));
+            if (headerCheckbox) {
+                headerCheckbox.checked = selectAllCheckbox.checked;
+                headerCheckbox.indeterminate = false;
+            }
             
             updateMoveButton(pane);
+        }
+
+        function toggleSelectVisible(pane) {
+            const tbody = document.getElementById(pane === 'current' ? 'currentStudentsBody' : 'pastStudentsBody');
+            const headerCheckbox = document.getElementById('selectVisible' + (pane === 'current' ? 'Current' : 'Past'));
+            const visibleRows = Array.from(tbody.querySelectorAll('.student-row')).filter(row => row.style.display !== 'none');
+
+            visibleRows.forEach(row => {
+                const checkbox = row.querySelector('.student-checkbox-' + pane);
+                if (checkbox) checkbox.checked = headerCheckbox.checked;
+            });
+
+            updateMoveButton(pane);
+        }
+
+        function updateVisibleHeaderCheckbox(pane) {
+            const tbody = document.getElementById(pane === 'current' ? 'currentStudentsBody' : 'pastStudentsBody');
+            const headerCheckbox = document.getElementById('selectVisible' + (pane === 'current' ? 'Current' : 'Past'));
+            if (!headerCheckbox) return;
+
+            const visibleRows = Array.from(tbody.querySelectorAll('.student-row')).filter(row => row.style.display !== 'none');
+            const visibleCheckboxes = visibleRows.map(row => row.querySelector('.student-checkbox-' + pane)).filter(Boolean);
+            const checkedCount = visibleCheckboxes.filter(cb => cb.checked).length;
+
+            if (checkedCount === 0) {
+                headerCheckbox.checked = false;
+                headerCheckbox.indeterminate = false;
+            } else if (checkedCount === visibleCheckboxes.length) {
+                headerCheckbox.checked = true;
+                headerCheckbox.indeterminate = false;
+            } else {
+                headerCheckbox.checked = false;
+                headerCheckbox.indeterminate = true;
+            }
         }
         
         function updateMoveButton(pane) {
@@ -584,8 +628,14 @@
                     row.style.display = '';
                 } else {
                     row.style.display = 'none';
+                    // Uncheck hidden rows so they are not included in selections
+                    const checkbox = row.querySelector('.student-checkbox-current');
+                    if (checkbox) checkbox.checked = false;
                 }
             });
+
+            updateVisibleHeaderCheckbox('current');
+            updateMoveButton('current');
         }
         
         function addTaskToFiltered() {
