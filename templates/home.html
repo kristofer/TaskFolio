@@ -770,6 +770,15 @@
             return url;
         }
 
+        function formatDueDate(dateStr) {
+            if (!dateStr) return dateStr;
+            const parts = dateStr.split('-').map(Number);
+            if (parts.length !== 3 || parts.some(isNaN)) return dateStr;
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            const [year, month, day] = parts;
+            return `${months[month - 1]} ${day}, ${year}`;
+        }
+
         // Modal functions
         function showTaskDetails(taskId) {
             const task = tasks.find(t => t.id == taskId);
@@ -782,7 +791,7 @@
             // Due Date
             if (task.dueDate) {
                 document.getElementById('modalDueDateField').style.display = 'block';
-                document.getElementById('modalDueDate').textContent = task.dueDate;
+                document.getElementById('modalDueDate').textContent = formatDueDate(task.dueDate);
             } else {
                 document.getElementById('modalDueDateField').style.display = 'none';
             }
@@ -1088,7 +1097,7 @@
             if (task.dueDate) {
                 const dueItem = document.createElement('div');
                 dueItem.className = 'task-card-meta-item';
-                dueItem.textContent = `⏰ Due: ${task.dueDate}`;
+                dueItem.textContent = `⏰ Due: ${formatDueDate(task.dueDate)}`;
                 metaDiv.appendChild(dueItem);
             }
             card.appendChild(metaDiv);
