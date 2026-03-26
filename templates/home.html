@@ -393,6 +393,50 @@
         .modal-field-value a:hover {
             text-decoration: underline;
         }
+        #modalDescription {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        #modalDescription p { margin-bottom: 0.5em; }
+        #modalDescription p:last-child { margin-bottom: 0; }
+        #modalDescription h1, #modalDescription h2, #modalDescription h3 {
+            font-weight: 600;
+            margin: 0.5em 0 0.25em;
+        }
+        #modalDescription h1 { font-size: 1.15em; }
+        #modalDescription h2 { font-size: 1.05em; }
+        #modalDescription h3 { font-size: 1em; }
+        #modalDescription ul, #modalDescription ol {
+            padding-left: 1.5em;
+            margin-bottom: 0.5em;
+        }
+        #modalDescription li { margin-bottom: 0.15em; }
+        #modalDescription code {
+            background: #f3f4f6;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 0.875em;
+        }
+        #modalDescription pre {
+            background: #f3f4f6;
+            padding: 8px;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin-bottom: 0.5em;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 0.875em;
+        }
+        #modalDescription pre code { background: none; padding: 0; }
+        #modalDescription blockquote {
+            border-left: 3px solid #d1d5db;
+            padding-left: 0.75em;
+            color: #6b7280;
+            margin-bottom: 0.5em;
+            font-style: italic;
+        }
+        #modalDescription hr { border: 0; border-top: 1px solid #e5e7eb; margin: 0.5em 0; }
         .task-card-url {
             font-size: 11px;
             color: #1571BD;
@@ -732,6 +776,7 @@
         </div>
     </div>
 
+    <script src="/static/js/markdown.js"></script>
     <script>
         // Current user ID from server (integer, safe from XSS)
         const currentUserId = {{.User.ID}};
@@ -776,7 +821,7 @@
             if (!task) return;
 
             document.getElementById('modalTitle').textContent = task.title;
-            document.getElementById('modalDescription').textContent = task.description || 'No description';
+            document.getElementById('modalDescription').innerHTML = renderMarkdown(task.description);
             document.getElementById('modalStatus').textContent = task.status.toUpperCase().replace('_', ' ');
             
             // Due Date
