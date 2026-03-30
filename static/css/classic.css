@@ -70,7 +70,7 @@
 
 .header h1,
 .header .logo,
-.header a {
+.header a:not(.btn) {
     color: var(--zcw-header-text) !important;
 }
 
