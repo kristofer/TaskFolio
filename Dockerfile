@@ -30,6 +30,9 @@ COPY --from=builder /app/tasking .
 # Copy templates
 COPY --from=builder /app/templates ./templates
 
+# Copy static assets (CSS, JS, images)
+COPY --from=builder /app/static ./static
+
 # Create directory for database
 RUN mkdir -p /data
 
