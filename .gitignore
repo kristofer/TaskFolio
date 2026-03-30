@@ -29,6 +29,8 @@ go.work.sum
 
 # Database files
 *.db
+*.db-shm
+*.db-wal
 
 # Application binary
 taskfolio
