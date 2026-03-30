@@ -644,7 +644,12 @@
             if (!task) return;
 
             document.getElementById('modalTitle').textContent = task.title;
-            document.getElementById('modalDescription').innerHTML = renderMarkdown(task.description);
+            const descEl = document.getElementById('modalDescription');
+            if (typeof renderMarkdown === 'function') {
+                descEl.innerHTML = renderMarkdown(task.description);
+            } else {
+                descEl.textContent = task.description || 'No description';
+            }
             document.getElementById('modalStatus').textContent = task.status.toUpperCase().replace('_', ' ');
             
             // Due Date

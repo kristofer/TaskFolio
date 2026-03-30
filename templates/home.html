@@ -312,6 +312,7 @@
             top: 0;
             width: 100%;
             height: 100%;
+            overflow: auto;
             background-color: rgba(0, 0, 0, 0.5);
             animation: fadeIn 0.3s;
         }
@@ -830,7 +831,12 @@
             if (!task) return;
 
             document.getElementById('modalTitle').textContent = task.title;
-            document.getElementById('modalDescription').innerHTML = renderMarkdown(task.description);
+            const descEl = document.getElementById('modalDescription');
+            if (typeof renderMarkdown === 'function') {
+                descEl.innerHTML = renderMarkdown(task.description);
+            } else {
+                descEl.textContent = task.description || 'No description';
+            }
             document.getElementById('modalStatus').textContent = task.status.toUpperCase().replace('_', ' ');
             
             // Due Date
