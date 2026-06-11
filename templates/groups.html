@@ -155,15 +155,11 @@
             padding: 0 20px 20px;
         }
     </style>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" crossorigin="anonymous">
     <link rel="stylesheet" href="/static/css/classic.css">
 </head>
 <body>
-    <div class="header">
-        <div class="header-content">
-            <h1><img src="/static/images/logo.png" alt="Tasking Logo" style="height: 40px; vertical-align: middle; margin-right: 8px;">Tasking - Manage Groups</h1>
-            <a href="/students" class="btn">← Back to Students</a>
-        </div>
-    </div>
+    {{template "navbar" .}}
 
     <div class="container">
         <div class="actions-bar">

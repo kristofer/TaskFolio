@@ -785,6 +785,12 @@ func importStudentsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method == "GET" {
+		data := struct{ User User }{User: user}
+		templates.ExecuteTemplate(w, "import_students.html", data)
+		return
+	}
+
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -3159,6 +3165,12 @@ func importTasksHandler(w http.ResponseWriter, r *http.Request) {
 	// Only instructors can import tasks
 	if user.Role != "instructor" {
 		http.Error(w, "Unauthorized", http.StatusForbidden)
+		return
+	}
+
+	if r.Method == "GET" {
+		data := struct{ User User }{User: user}
+		templates.ExecuteTemplate(w, "import_tasks.html", data)
 		return
 	}
 
