@@ -2126,7 +2126,7 @@ func TestTaskDetailTracking(t *testing.T) {
 		FROM tasks t
 		JOIN users u ON t.owner_id = u.id
 		WHERE t.title = ? AND t.created_by = ? AND COALESCE(t.cohort_id, '') = ?
-		ORDER BY u.username
+		ORDER BY t.created_at DESC
 	`, taskTitle, instructorID, cohortName)
 	if err != nil {
 		t.Fatalf("Failed to query task details: %v", err)
