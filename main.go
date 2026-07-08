@@ -1924,7 +1924,7 @@ func taskDetailHandler(w http.ResponseWriter, r *http.Request) {
 		FROM tasks t
 		JOIN users u ON t.owner_id = u.id
 		WHERE t.title = ? AND t.created_by = ? AND COALESCE(t.cohort_id, '') = ?
-		ORDER BY u.username
+		ORDER BY t.created_at DESC
 	`, taskTitle, createdBy, cohortID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
