@@ -140,6 +140,6 @@ func addWriteTools(server *mcp.Server, s *Store, cfg Config) {
 	mcp.AddTool(server, &mcp.Tool{Name: "update_task_status", Description: "Move a task to pending, in_progress, blocked or completed, stamping start and done dates the way TaskFolio does.", Annotations: writes},
 		func(ctx context.Context, _ *mcp.CallToolRequest, in statusArgs) (*mcp.CallToolResult, statusOut, error) {
 			err := s.UpdateTaskStatus(in.TaskID, in.Status)
-			return nil, statusOut{in.TaskID, in.Status}, err
+			return nil, statusOut(in), err
 		})
 }

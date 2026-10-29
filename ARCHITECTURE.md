@@ -64,7 +64,7 @@ TaskFolio follows a **monolithic server-side rendered web application** architec
 ## Technology Stack
 
 ### Backend
-- **Language**: Go (Golang) 1.24.7
+- **Language**: Go (Golang) 1.27
 - **Web Framework**: Go standard library `net/http`
 - **Database**: SQLite3 via `github.com/mattn/go-sqlite3` driver
 - **Templating**: Go's `html/template` package

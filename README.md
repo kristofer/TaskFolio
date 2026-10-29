@@ -47,7 +47,7 @@ A multi-tenant web-based task management system for Zip Code Wilmington coding b
 
 ## Technology Stack
 
-- **Language**: Go 1.24.7
+- **Language**: Go 1.27
 - **Database**: SQLite3
 - **Templates**: Go `html/template` (server-side rendering)
 - **Session Management**: Cookie-based authentication

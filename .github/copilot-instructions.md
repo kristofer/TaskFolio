@@ -25,7 +25,7 @@ These limitations are intentional for learning purposes but must be addressed be
 
 ## Technology Stack
 
-- **Language**: Go 1.24.7
+- **Language**: Go 1.27
 - **Database**: SQLite3 (`github.com/mattn/go-sqlite3`)
 - **Templates**: Go `html/template` package for server-side rendering
 - **Session Management**: Cookie-based authentication
